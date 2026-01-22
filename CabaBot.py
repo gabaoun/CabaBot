@@ -1,7 +1,8 @@
 import discord
-from discord import app_commands
 import asyncio
 import os
+import yt_dlp
+from discord import app_commands
 from dotenv import load_dotenv, find_dotenv
 
 # Carrega .env (procura automaticamente no projeto)
@@ -21,9 +22,6 @@ class CabaBot(discord.Client):
     def __init__(self):
         # Intents default são mais leves e suficientes para a maioria dos bots
         intents = discord.Intents.default()
-        intents.voice_states = True  # Necessário para comandos relacionados a voz
-        intents.members = True  # Necessário para acessar informações dos membros
-        intents.messages = True  # Necessário para comandos relacionados a mensagens
         intents.message_content = True  # Necessário para ler o conteúdo das mensagens
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
@@ -36,10 +34,82 @@ class CabaBot(discord.Client):
     async def on_ready(self):
         print(f'Arriégua! {self.user} está online papai!')
 
+async def search_ytdlp_async(query, ydl_opts):
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, lambda: _extract(query, ydl_opts))
+
+def _extract(query, ydl_opts):
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        return ydl.extract_info(query, download=False)
+
 
 bot = CabaBot()
 
 # --- COMANDOS ---
+
+@bot.tree.command(name="Musica", description="Toca uma música no canal de voz")
+@app_commands.describe(url="URL da música para tocar")
+async def musica(interaction: discord.Interaction, url: str):
+    await interaction.response.defer()
+
+    # Validar que é um servidor (Guild) válido
+    if not interaction.guild:
+        await interaction.followup.send("Este comando só funciona dentro de um servidor.")
+        return
+    
+    # Validar que o usuário é um Member (não apenas User)
+    if not isinstance(interaction.user, discord.Member):
+        await interaction.followup.send("Erro ao acessar informações do usuário.")
+        return
+    
+    voice_channel = interaction.user.voice.channel
+    if voice_channel is None:
+        await interaction.followup.send("Você precisa estar em um canal de voz para usar este comando.")
+        return
+    
+    voice_client = interaction.guild.voice_client
+    
+    if voice_client is None:
+        voice_client = await voice_channel.connect()
+    elif voice_client.channel != voice_channel:
+        await voice_client.disconnect()
+        voice_client = await voice_channel.connect()
+
+    ytdlp_options = {
+        'format': 'bestaudio[abr<=96]/bestaudio',
+        'noplaylist': True,
+        'youtube_include_dash_manifest': False,
+        'youtube_include_hls_manifest': False,
+    }
+
+    query = 'ytsearch1: ' + url
+    results = await search_ytdlp_async(query, ytdlp_options)
+    tracks = results.get('entries', [])
+
+    if not tracks:
+        await interaction.followup.send("Nenhum resultado encontrado para a consulta.")
+        return
+    
+    first_track = tracks[0]
+    audio_url = first_track['url']
+    title = first_track.get('title', 'Música Desconhecida')
+
+    ffmpeg_options = {
+        'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+        'options': '-vn -c:a libopus -b:a 96k',
+    }
+    
+    source = discord.FFmpegPCMAudio(
+        audio_url,
+        executable='bin\\ffmpeg\\ffmpeg.exe',
+        **ffmpeg_options
+    )
+
+    if isinstance(voice_client, discord.VoiceClient):
+        voice_client.play(source)
+    await interaction.followup.send(f"🎵 Tocando: **{title}**")
+
+
 
 @bot.tree.command(name="timer", description="Define um timer em segundos")
 @app_commands.describe(segundos="Quantos segundos quer esperar?")
@@ -57,6 +127,7 @@ async def timer(interaction: discord.Interaction, segundos: int):
     if not isinstance(interaction.user, discord.Member):
         await safe_send("Este comando só funciona dentro de um servidor.", ephemeral=True)
         return
+    
     member: discord.Member = interaction.user
 
     if not member.voice or not member.voice.channel:
