@@ -1,0 +1,22 @@
+{
+  "typeCheckingMode": "basic",
+  "reportGeneralTypeIssues": true,
+  "reportOptionalMemberAccess": false,
+  "reportOptionalSubscript": false,
+  "reportOptionalOperand": false,
+  "reportOptionalIterable": false,
+  "reportOptionalContextManager": false,
+  "reportOptionalCall": false,
+  "reportOptionalAttributeAccess": false,
+  "reportGeneralTypeIssues": false,
+  "reportUnknownMemberType": false,
+  "reportUnknownArgumentType": false,
+  "reportAttributeAccessIssue": false,
+  "reportReturnType": false,
+  "reportUnusedImport": true,
+  "stubPath": "",
+  "exclude": [
+    "**/__pycache__",
+    "**/.*"
+  ]
+}
