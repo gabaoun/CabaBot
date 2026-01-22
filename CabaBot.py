@@ -37,7 +37,7 @@ SCRIPT_DIR = Path(__file__).parent
 FFMPEG_PATH = SCRIPT_DIR / "bin" / "ffmpeg" / "ffmpeg.exe"
 
 # Áudio a ser reproduzido quando o bot ficar online (padrão: vídeo do YouTube)
-STARTUP_AUDIO_URL = random.choice(["https://www.youtube.com/watch?v=biZlbJAdyTE", "https://www.youtube.com/watch?v=sR9KWAIFSfc", "https://www.youtube.com/watch?v=xmf99leO-Z0", "https://www.youtube.com/watch?v=8zslY2eYJ9M"])
+STARTUP_AUDIO_URL = random.choice(["https://www.youtube.com/watch?v=6xoJCJYLzZw", "https://www.youtube.com/watch?v=biZlbJAdyTE", "https://www.youtube.com/watch?v=sR9KWAIFSfc", "https://www.youtube.com/watch?v=xmf99leO-Z0", "https://www.youtube.com/watch?v=8zslY2eYJ9M"])
 
 # Path para configuração persistente por guild
 CONFIG_PATH = SCRIPT_DIR / "config.json"
@@ -691,21 +691,29 @@ async def limpar_fila(interaction: discord.Interaction):
 
 class DiceRoller:
     """
-    Classe responsável por rolar dados com suporte a modificadores.
+    Classe responsável por rolar dados com suporte a modificadores, vantagem e desvantagem.
     Torna o sistema extensível para diferentes tipos de testes.
     """
     
-    def __init__(self, dado_str: str):
+    def __init__(self, dado_str: str, modificador: int = 0, vantagem: bool = False, desvantagem: bool = False):
         """
         Inicializa um rolador de dados.
         
         Args:
             dado_str (str): Formato do dado (ex: 'd20', 'd6', '2d4')
+            modificador (int): Modificador a ser adicionado/subtraído ao resultado
+            vantagem (bool): Se True, rola 2 vezes e pega o maior resultado
+            desvantagem (bool): Se True, rola 2 vezes e pega o menor resultado
         """
         self.dado_str = dado_str.lower().strip()
         self.quantidade, self.lados = self._parse_dado()
+        self.modificador = modificador
+        self.vantagem = vantagem
+        self.desvantagem = desvantagem
         self.resultados: List[int] = []
         self.total = 0
+        self.resultado_utilizado = 0  # Para vantagem/desvantagem
+        self.resultado_descartado = 0  # Para vantagem/desvantagem
     
     def _parse_dado(self) -> Tuple[int, int]:
         """Extrai quantidade e lados do formato de dado."""
@@ -727,9 +735,42 @@ class DiceRoller:
             raise ValueError(f"Formato inválido: {self.dado_str}")
     
     def rolar(self) -> None:
-        """Rola os dados e armazena os resultados."""
-        self.resultados = [random.randint(1, self.lados) for _ in range(self.quantidade)]
-        self.total = sum(self.resultados)
+        """Rola os dados e armazena os resultados com vantagem/desvantagem se aplicável."""
+        if self.vantagem or self.desvantagem:
+            # Rola duas vezes quando há vantagem ou desvantagem
+            rolagem1 = [random.randint(1, self.lados) for _ in range(self.quantidade)]
+            rolagem2 = [random.randint(1, self.lados) for _ in range(self.quantidade)]
+            
+            soma1 = sum(rolagem1)
+            soma2 = sum(rolagem2)
+            
+            if self.vantagem:  # Pega o maior
+                if soma1 >= soma2:
+                    self.resultados = rolagem1
+                    self.resultado_utilizado = soma1
+                    self.resultado_descartado = soma2
+                else:
+                    self.resultados = rolagem2
+                    self.resultado_utilizado = soma2
+                    self.resultado_descartado = soma1
+            else:  # Desvantagem - pega o menor
+                if soma1 <= soma2:
+                    self.resultados = rolagem1
+                    self.resultado_utilizado = soma1
+                    self.resultado_descartado = soma2
+                else:
+                    self.resultados = rolagem2
+                    self.resultado_utilizado = soma2
+                    self.resultado_descartado = soma1
+            
+            self.total = self.resultado_utilizado
+        else:
+            # Rolagem normal
+            self.resultados = [random.randint(1, self.lados) for _ in range(self.quantidade)]
+            self.total = sum(self.resultados)
+        
+        # Aplica o modificador
+        self.total += self.modificador
     
     def format_resultado(self) -> str:
         """Formata o resultado de forma legível."""
@@ -740,7 +781,7 @@ class DiceRoller:
             return f"**{self.resultados[0]}**"
         else:
             detalhes = ", ".join(map(str, self.resultados))
-            return f"`{detalhes}` → **{self.total}**"
+            return f"`{detalhes}` → **{sum(self.resultados)}**"
 
 
 class TestConfig:
@@ -950,39 +991,65 @@ async def rolar_dado(interaction: discord.Interaction, lados: int, quantidade: i
         )
 
 
-@bot.tree.command(name="dado_custom", description="Rola um dado com número de lados customizado")
+@bot.tree.command(name="dado_custom", description="Rola um dado com número de lados customizado, modificadores e vantagem/desvantagem")
 @app_commands.describe(
     dado="Formato do dado (ex: d20, 3d6, 2d10)",
-    modificador="Modificador a somar ao resultado (opcional)"
+    modificador="Modificador a somar ou subtrair do resultado (ex: +5 ou -2)",
+    vantagem="Rola 2 vezes e usa o maior resultado",
+    desvantagem="Rola 2 vezes e usa o menor resultado"
 )
-async def dado_customizado(interaction: discord.Interaction, dado: str, modificador: int = 0):
+async def dado_customizado(interaction: discord.Interaction, dado: str, modificador: int = 0, vantagem: bool = False, desvantagem: bool = False):
     """
     Comando para rolar dados com número de lados customizado.
     
-    Permite rolar dados em qualquer formato, com opção de modificador.
+    Permite rolar dados em qualquer formato, com opção de modificador, vantagem e desvantagem.
     
     Args:
         interaction (discord.Interaction): A interação do slash command
         dado (str): Formato do dado (ex: d20, 3d6, 2d10)
-        modificador (int): Modificador a somar ao resultado
+        modificador (int): Modificador a somar ou subtrair do resultado (ex: +5 ou -2)
+        vantagem (bool): Se True, rola 2 vezes e usa o maior resultado
+        desvantagem (bool): Se True, rola 2 vezes e usa o menor resultado
     """
+    # Valida que vantagem e desvantagem não sejam ambas true
+    if vantagem and desvantagem:
+        await interaction.response.send_message(
+            "❌ Você não pode ter vantagem E desvantagem ao mesmo tempo!",
+            ephemeral=True
+        )
+        return
+    
     try:
-        # Valida e rola o dado
-        roller = DiceRoller(dado)
+        # Valida e rola o dado com os modificadores
+        roller = DiceRoller(dado, modificador=modificador, vantagem=vantagem, desvantagem=desvantagem)
         roller.rolar()
         
-        total_com_mod = roller.total + modificador
+        # Determina cores e emojis baseado no tipo de rolagem
+        if vantagem:
+            cor = discord.Color.gold()
+            tipo_roll = "✨ Rolagem com VANTAGEM"
+        elif desvantagem:
+            cor = discord.Color.dark_red()
+            tipo_roll = "💀 Rolagem com DESVANTAGEM"
+        else:
+            cor = discord.Color.green()
+            tipo_roll = "🎲 Rolagem"
         
         # Formata a resposta
         embed = discord.Embed(
-            title=f"🎲 Rolagem de {roller.dado_str.upper()}",
-            color=discord.Color.green()
+            title=f"{tipo_roll} de {roller.dado_str.upper()}",
+            color=cor
         )
         
+        # Mostra resultados
         if roller.quantidade == 1:
+            valor_resultado = f"**{roller.resultados[0]}**"
+            if modificador != 0:
+                operador = "+" if modificador > 0 else ""
+                valor_resultado += f" {operador}{modificador} = **{roller.total}**"
             embed.add_field(
                 name="Resultado",
-                value=f"**{roller.resultados[0]}**",
+                value=valor_resultado,
                 inline=False
             )
         else:
@@ -992,22 +1059,33 @@ async def dado_customizado(interaction: discord.Interaction, dado: str, modifica
                 value=f"`{detalhes}`",
                 inline=False
             )
-            embed.add_field(
-                name="Subtotal",
-                value=f"**{roller.total}**",
-                inline=False
-            )
+            
+            soma_sem_mod = roller.total - modificador
+            if modificador != 0:
+                operador = "+" if modificador > 0 else ""
+                embed.add_field(
+                    name="Subtotal",
+                    value=f"**{soma_sem_mod}** {operador}{modificador} = **{roller.total}**",
+                    inline=False
+                )
+            else:
+                embed.add_field(
+                    name="Total",
+                    value=f"**{roller.total}**",
+                    inline=False
+                )
         
-        if modificador != 0:
-            operador = "+" if modificador > 0 else ""
+        # Se houver vantagem ou desvantagem, mostra os resultados descartados
+        if vantagem or desvantagem:
+            tipo_desc = "Desvantagem - Descartado" if vantagem else "Vantagem - Descartado"
             embed.add_field(
-                name="Modificador",
-                value=f"{operador}{modificador}",
+                name=tipo_desc,
+                value=f"`{roller.resultado_descartado}`",
                 inline=True
             )
             embed.add_field(
-                name="Total com Modificador",
-                value=f"**{total_com_mod}**",
+                name="Resultado Utilizado",
+                value=f"`{roller.resultado_utilizado}`",
                 inline=True
             )
         
