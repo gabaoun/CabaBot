@@ -9,12 +9,14 @@ Funcionalidades principais:
 - Sistema de timers com toque de áudio ao final
 - Controles de reprodução (pausar, retomar, pular, parar)
 - Gerenciamento de filas de música por servidor
+- Rolador de dados padrão (d2 até d100) e customizados
 - Comandos de utilidade (calculadora, perfil de usuário, teste de conexão)
 
 Author: CabaBot Team
-Version: 1.0.0
+Version: 1.1.0
 """
 
+import random
 import discord
 import asyncio
 import os
@@ -34,7 +36,7 @@ SCRIPT_DIR = Path(__file__).parent
 FFMPEG_PATH = SCRIPT_DIR / "bin" / "ffmpeg" / "ffmpeg.exe"
 
 # Áudio a ser reproduzido quando o bot ficar online (padrão: vídeo do YouTube)
-STARTUP_AUDIO_URL = "https://www.youtube.com/watch?v=biZlbJAdyTE"
+STARTUP_AUDIO_URL = random.choice(["https://www.youtube.com/watch?v=biZlbJAdyTE", "https://www.youtube.com/watch?v=sR9KWAIFSfc", "https://www.youtube.com/watch?v=xmf99leO-Z0", "https://www.youtube.com/watch?v=8zslY2eYJ9M"])
 
 # Path para configuração persistente por guild
 CONFIG_PATH = SCRIPT_DIR / "config.json"
@@ -219,32 +221,6 @@ class CabaBot(discord.Client):
             asyncio.create_task(_play_startup_for_guild(g))
 
 
-# --- COMANDOS DE CONFIGURAÇÃO ---
-
-@bot.tree.command(name="startup_audio", description="Ativa/desativa áudio de boas-vindas neste servidor")
-@app_commands.describe(enabled="true para ativar, false para desativar")
-async def startup_audio(interaction: discord.Interaction, enabled: bool):
-    """
-    Comando para habilitar ou desabilitar o áudio de startup neste servidor.
-
-    Exige permissão `Manage Guild` para alterar a configuração.
-    """
-    # Só funciona em servidores
-    if interaction.guild is None:
-        await interaction.response.send_message("Oxente — esse comando só funciona dentro de um servidor, visse?", ephemeral=True)
-        return
-
-    # Verifica permissão do usuário
-    if not isinstance(interaction.user, discord.Member) or not interaction.user.guild_permissions.manage_guild:
-        await interaction.response.send_message("Você precisa da permissão 'Gerenciar Servidor' pra isso.", ephemeral=True)
-        return
-
-    # Salva a configuração e responde
-    set_guild_startup(interaction.guild.id, enabled)
-    state = "ativado" if enabled else "desativado"
-    await interaction.response.send_message(f"Áudio de startup {state} neste servidor.", ephemeral=True)
-
-
 async def search_ytdlp_async(query: str, ydl_opts: dict) -> dict:
     """
     Busca informações de vídeo no YouTube de forma assíncrona.
@@ -283,9 +259,32 @@ def _extract(query: str, ydl_opts: dict) -> dict:
 
 bot = CabaBot()
 
-# ============================================================================
-# COMANDOS - SISTEMA DE MÚSICA
-# ============================================================================
+# --- COMANDOS DE CONFIGURAÇÃO ---
+
+@bot.tree.command(name="startup_audio", description="Ativa/desativa áudio de boas-vindas neste servidor")
+@app_commands.describe(enabled="true para ativar, false para desativar")
+async def startup_audio(interaction: discord.Interaction, enabled: bool):
+    """
+    Comando para habilitar ou desabilitar o áudio de startup neste servidor.
+
+    Exige permissão `Manage Guild` para alterar a configuração.
+    """
+    # Só funciona em servidores
+    if interaction.guild is None:
+        await interaction.response.send_message("Oxente — esse comando só funciona dentro de um servidor, visse?", ephemeral=True)
+        return
+
+    # Verifica permissão do usuário
+    if not isinstance(interaction.user, discord.Member) or not interaction.user.guild_permissions.manage_guild:
+        await interaction.response.send_message("Você precisa da permissão 'Gerenciar Servidor' pra isso.", ephemeral=True)
+        return
+
+    # Salva a configuração e responde
+    set_guild_startup(interaction.guild.id, enabled)
+    state = "ativado" if enabled else "desativado"
+    await interaction.response.send_message(f"Áudio de startup {state} neste servidor.", ephemeral=True)
+
+
 
 @bot.tree.command(name="musica", description="Toca uma música no canal de voz")
 @app_commands.describe(url="URL do YouTube ou nome da música para tocar")
@@ -395,7 +394,7 @@ async def musica(interaction: discord.Interaction, url: str):
 
 @bot.tree.command(name="timer", description="Define um timer em segundos e toca uma música ao fim")
 @app_commands.describe(
-    segundos="Quantos segundos quer esperar? (máximo 300)",
+    segundos="Quantos segundos quer esperar? (máximo 1200)",
     url="URL do YouTube para tocar quando o timer acabar"
 )
 async def timer(interaction: discord.Interaction, segundos: int, url: str):
@@ -445,17 +444,16 @@ async def timer(interaction: discord.Interaction, segundos: int, url: str):
     
     # Informa o usuário que o timer foi iniciado
     await safe_send(
-        f"⏱️ Timer de {segundos}s iniciado — vou avisar quando acabar, visse?\\n"
-        f"🎵 Música: `{url}`\\n"
+        f"⏱️ Timer de {segundos}s iniciado — vou avisar quando acabar, visse? \n"
+        f"🎵 Música: `{url}` \n"
         f"👤 Pedido por {member.mention}",
-        ephemeral=True
     )
 
     # Aguarda o tempo especificado do timer
     try:
         await asyncio.sleep(segundos)
     except asyncio.CancelledError:
-        await safe_send(f"{member.mention} ⏱️ Timer foi cancelado.", ephemeral=True)
+        await safe_send(f"{member.mention} ⏱️ Timer foi cancelado.")
         return
 
     # Quando o timer acabar, toca a música
@@ -752,6 +750,100 @@ async def perfil(interaction: discord.Interaction, membro: discord.Member):
     embed.set_image(url=avatar_url)
     
     await interaction.response.send_message(embed=embed)
+
+
+@bot.tree.command(name="d", description="Rola um dado padrão (d2 até d100)")
+@app_commands.describe(
+    lados="Número de lados do dado (2, 4, 6, 8, 10, 12, 20, 100)",
+    quantidade="Quantidade de dados a rolar (padrão: 1)"
+)
+@app_commands.choices(lados=[
+    discord.app_commands.Choice(name="d2", value=2),
+    discord.app_commands.Choice(name="d4", value=4),
+    discord.app_commands.Choice(name="d6", value=6),
+    discord.app_commands.Choice(name="d8", value=8),
+    discord.app_commands.Choice(name="d10", value=10),
+    discord.app_commands.Choice(name="d12", value=12),
+    discord.app_commands.Choice(name="d20", value=20),
+    discord.app_commands.Choice(name="d100", value=100),
+])
+async def rolar_dado(interaction: discord.Interaction, lados: int, quantidade: int = 1):
+    """
+    Comando para rolar dados padrão.
+    
+    Permite rolar um ou mais dados com número de lados pré-definido.
+    
+    Args:
+        interaction (discord.Interaction): A interação do slash command
+        lados (int): Número de lados do dado (2, 4, 6, 8, 10, 12, 20, 100)
+        quantidade (int): Quantidade de dados a rolar (padrão: 1)
+    """
+    # Valida a quantidade de dados
+    if quantidade < 1 or quantidade > 100:
+        await interaction.response.send_message(
+            f"❌ Quantidade inválida. Use entre 1 e 100 dados, visse?",
+            ephemeral=True
+        )
+        return
+    
+    # Rola os dados
+    resultados = [random.randint(1, lados) for _ in range(quantidade)]
+    total = sum(resultados)
+    
+    # Formata a resposta
+    if quantidade == 1:
+        resposta = f"🎲 **d{lados}**: **{resultados[0]}**"
+    else:
+        resultados_str = ", ".join(map(str, resultados))
+        resposta = f"🎲 **{quantidade}d{lados}**\nResultados: `{resultados_str}`\n**Total: {total}**"
+    
+    await interaction.response.send_message(resposta)
+
+
+@bot.tree.command(name="dado_custom", description="Rola um dado com número de lados customizado")
+@app_commands.describe(
+    lados="Número de lados do dado (mínimo 2, máximo 1000)",
+    quantidade="Quantidade de dados a rolar (padrão: 1, máximo 100)"
+)
+async def dado_customizado(interaction: discord.Interaction, lados: int, quantidade: int = 1):
+    """
+    Comando para rolar dados com número de lados customizado.
+    
+    Permite rolar um ou mais dados com qualquer número de lados dentro dos limites.
+    
+    Args:
+        interaction (discord.Interaction): A interação do slash command
+        lados (int): Número de lados do dado (2 a 1000)
+        quantidade (int): Quantidade de dados a rolar (1 a 100)
+    """
+    # Valida o número de lados
+    if lados < 2 or lados > 1000:
+        await interaction.response.send_message(
+            f"❌ Número de lados inválido. Use entre 2 e 1000, visse?",
+            ephemeral=True
+        )
+        return
+    
+    # Valida a quantidade de dados
+    if quantidade < 1 or quantidade > 100:
+        await interaction.response.send_message(
+            f"❌ Quantidade inválida. Use entre 1 e 100 dados, visse?",
+            ephemeral=True
+        )
+        return
+    
+    # Rola os dados
+    resultados = [random.randint(1, lados) for _ in range(quantidade)]
+    total = sum(resultados)
+    
+    # Formata a resposta
+    if quantidade == 1:
+        resposta = f"🎲 **d{lados}**: **{resultados[0]}**"
+    else:
+        resultados_str = ", ".join(map(str, resultados))
+        resposta = f"🎲 **{quantidade}d{lados}**\nResultados: `{resultados_str}`\n**Total: {total}**"
+    
+    await interaction.response.send_message(resposta)
 
 
 # ============================================================================

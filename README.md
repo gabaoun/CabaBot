@@ -29,6 +29,8 @@ Um bot Discord robusto, assíncrono e multifuncional desenvolvido com foco em re
 | `/teste` | Verifica conexão do bot | `/teste` |
 | `/soma` | Calculadora simples | `/soma num1:<float> num2:<float>` |
 | `/perfil` | Exibe avatar de membro | `/perfil membro:<@usuario>` |
+| `/d` | Rola dados padrão | `/d lados:<2\|4\|6\|8\|10\|12\|20\|100> quantidade:<1-100>` |
+| `/dado_custom` | Rola dados customizados | `/dado_custom lados:<2-1000> quantidade:<1-100>` |
 
 ## 🔧 Arquitetura Técnica
 
@@ -79,113 +81,29 @@ Um bot Discord robusto, assíncrono e multifuncional desenvolvido com foco em re
 ## 📦 Estrutura do Projeto
 
 ```
-📦BotDiscordOsCaba
- ┗ 📂CabaBot
- ┃ ┣ 📂.git
- ┃ ┃ ┣ 📂hooks
- ┃ ┃ ┃ ┣ 📜applypatch-msg.sample
- ┃ ┃ ┃ ┣ 📜commit-msg.sample
- ┃ ┃ ┃ ┣ 📜fsmonitor-watchman.sample
- ┃ ┃ ┃ ┣ 📜post-update.sample
- ┃ ┃ ┃ ┣ 📜pre-applypatch.sample
- ┃ ┃ ┃ ┣ 📜pre-commit.sample
- ┃ ┃ ┃ ┣ 📜pre-merge-commit.sample
- ┃ ┃ ┃ ┣ 📜pre-push.sample
- ┃ ┃ ┃ ┣ 📜pre-rebase.sample
- ┃ ┃ ┃ ┣ 📜pre-receive.sample
- ┃ ┃ ┃ ┣ 📜prepare-commit-msg.sample
- ┃ ┃ ┃ ┣ 📜push-to-checkout.sample
- ┃ ┃ ┃ ┣ 📜sendemail-validate.sample
- ┃ ┃ ┃ ┗ 📜update.sample
- ┃ ┃ ┣ 📂info
- ┃ ┃ ┃ ┗ 📜exclude
- ┃ ┃ ┣ 📂logs
- ┃ ┃ ┃ ┣ 📂refs
- ┃ ┃ ┃ ┃ ┣ 📂heads
- ┃ ┃ ┃ ┃ ┃ ┗ 📜main
- ┃ ┃ ┃ ┃ ┗ 📂remotes
- ┃ ┃ ┃ ┃ ┃ ┗ 📂origin
- ┃ ┃ ┃ ┃ ┃ ┃ ┣ 📜HEAD
- ┃ ┃ ┃ ┃ ┃ ┃ ┗ 📜main
- ┃ ┃ ┃ ┗ 📜HEAD
- ┃ ┃ ┣ 📂objects
- ┃ ┃ ┃ ┣ 📂0f
- ┃ ┃ ┃ ┃ ┗ 📜5fc2b66971009fc62c7270a268d617bd8fe664
- ┃ ┃ ┃ ┣ 📂10
- ┃ ┃ ┃ ┃ ┗ 📜cee37c6f07e2c350229da580d012b458bc9281
- ┃ ┃ ┃ ┣ 📂12
- ┃ ┃ ┃ ┃ ┗ 📜50a5e2741e0151910dce780dec73c5d175f816
- ┃ ┃ ┃ ┣ 📂1b
- ┃ ┃ ┃ ┃ ┗ 📜cd4c5aa945b3b4140695f62bf961aa8495ae99
- ┃ ┃ ┃ ┣ 📂1f
- ┃ ┃ ┃ ┃ ┗ 📜a2723d0a94fad8bfffc31b0f104f3377d6321e
- ┃ ┃ ┃ ┣ 📂2d
- ┃ ┃ ┃ ┃ ┗ 📜4dafb53f67fd04591ba18eaaf1db4e61f0ce91
- ┃ ┃ ┃ ┣ 📂35
- ┃ ┃ ┃ ┃ ┗ 📜f30015a68c48efaa15ff9763819d253f2c4d17
- ┃ ┃ ┃ ┣ 📂42
- ┃ ┃ ┃ ┃ ┗ 📜890e32f63cde5c813a56495e05855379caea7e
- ┃ ┃ ┃ ┣ 📂45
- ┃ ┃ ┃ ┃ ┗ 📜9f3287aebbb6c2caee5995eec3c407e8b511ab
- ┃ ┃ ┃ ┣ 📂4b
- ┃ ┃ ┃ ┃ ┗ 📜91652692a35ce54e467b0413f04bc87685c2df
- ┃ ┃ ┃ ┣ 📂4c
- ┃ ┃ ┃ ┃ ┗ 📜49bd78f1d08f2bc09fa0bd8191ed38b7dce5e3
- ┃ ┃ ┃ ┣ 📂6a
- ┃ ┃ ┃ ┃ ┗ 📜196994df354261738ce6f0dbf19dff2748c202
- ┃ ┃ ┃ ┣ 📂6f
- ┃ ┃ ┃ ┃ ┗ 📜46904cbd305c5152c18f204cbaadca9c6cb96b
- ┃ ┃ ┃ ┣ 📂72
- ┃ ┃ ┃ ┃ ┗ 📜db38abbc211d7d4256dc0e4da4474ae4ce4873
- ┃ ┃ ┃ ┣ 📂81
- ┃ ┃ ┃ ┃ ┗ 📜9bab7fab33a332651ddafd212bd5c907765193
- ┃ ┃ ┃ ┣ 📂83
- ┃ ┃ ┃ ┃ ┗ 📜86db4b7e3a95a8f3a8734af9a30eb748e21af3
- ┃ ┃ ┃ ┣ 📂96
- ┃ ┃ ┃ ┃ ┗ 📜a7a8498ef20e420f5a67fae661017b4aeb67fc
- ┃ ┃ ┃ ┣ 📂a8
- ┃ ┃ ┃ ┃ ┗ 📜1909bed273d68685fc23de9d9522748241fd5e
- ┃ ┃ ┃ ┣ 📂b2
- ┃ ┃ ┃ ┃ ┗ 📜7d0bebe7f5f299b62769b607dda53021e33bb6
- ┃ ┃ ┃ ┣ 📂cc
- ┃ ┃ ┃ ┃ ┗ 📜5d259ea246865d83710de9f4c72aa82332ed0a
- ┃ ┃ ┃ ┣ 📂d3
- ┃ ┃ ┃ ┃ ┣ 📜22787b0b219a779c7ea40cd4b9dcacbef8826b
- ┃ ┃ ┃ ┃ ┗ 📜f855ac221d99d80b91e07494e728687b2a4d79
- ┃ ┃ ┃ ┣ 📂d9
- ┃ ┃ ┃ ┃ ┗ 📜32244101971f8fe2a45578aec6a1c6352c5d63
- ┃ ┃ ┃ ┣ 📂df
- ┃ ┃ ┃ ┃ ┗ 📜e0770424b2a19faf507a501ebfc23be8f54e7b
- ┃ ┃ ┃ ┣ 📂ff
- ┃ ┃ ┃ ┃ ┗ 📜dbc07e117cbe138c59e6e675ccb75a3ac68e02
- ┃ ┃ ┃ ┣ 📂info
- ┃ ┃ ┃ ┗ 📂pack
- ┃ ┃ ┣ 📂refs
- ┃ ┃ ┃ ┣ 📂heads
- ┃ ┃ ┃ ┃ ┗ 📜main
- ┃ ┃ ┃ ┣ 📂remotes
- ┃ ┃ ┃ ┃ ┗ 📂origin
- ┃ ┃ ┃ ┃ ┃ ┣ 📜HEAD
- ┃ ┃ ┃ ┃ ┃ ┗ 📜main
- ┃ ┃ ┃ ┗ 📂tags
- ┃ ┃ ┣ 📜COMMIT_EDITMSG
- ┃ ┃ ┣ 📜config
- ┃ ┃ ┣ 📜description
- ┃ ┃ ┣ 📜FETCH_HEAD
- ┃ ┃ ┣ 📜HEAD
- ┃ ┃ ┣ 📜index
- ┃ ┃ ┗ 📜ORIG_HEAD
- ┃ ┣ 📂bin
- ┃ ┃ ┗ 📂ffmpeg
- ┃ ┃ ┃ ┣ 📜ffmpeg.exe
- ┃ ┃ ┃ ┣ 📜ffplay.exe
- ┃ ┃ ┃ ┗ 📜ffprobe.exe
- ┃ ┣ 📜.env
- ┃ ┣ 📜.gitattributes
- ┃ ┣ 📜.gitignore
- ┃ ┣ 📜CabaBot.py
- ┃ ┗ 📜README.md
+📦 CabaBot/
+ ┣ 📂 bin/
+ ┃ ┗ 📂 ffmpeg/          # FFmpeg executáveis para processamento de áudio
+ ┃   ┣ 📜 ffmpeg.exe
+ ┃   ┣ 📜 ffplay.exe
+ ┃   ┗ 📜 ffprobe.exe
+ ┣ 📂 __pycache__/       # Cache compilado de Python (ignorado)
+ ┣ 📜 CabaBot.py         # Arquivo principal do bot
+ ┣ 📜 README.md          # Documentação do projeto
+ ┣ 📜 .env               # Variáveis de ambiente (token do bot)
+ ┣ 📜 .gitignore         # Configuração do Git
+ ┗ 📜 .gitattributes     # Atributos do Git
+
 ```
+
+### Arquivos Principais
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `CabaBot.py` | Script principal com todos os comandos e funcionalidades |
+| `.env` | Arquivo de configuração (contém o TOKEN do Discord) |
+| `bin/ffmpeg/` | Binários do FFmpeg para processamento de áudio |
+| `README.md` | Documentação completa do projeto |
 
 ## 🔐 Segurança
 
@@ -218,6 +136,18 @@ Um bot Discord robusto, assíncrono e multifuncional desenvolvido com foco em re
 ### Criar timer de 5 minutos com música
 ```
 /timer segundos:300 url:Alarm Clock
+```
+
+### Rolar um dado padrão
+```
+/d lados:20
+/d lados:6 quantidade:3
+```
+
+### Rolar um dado customizado
+```
+/dado_custom lados:50
+/dado_custom lados:100 quantidade:5
 ```
 
 ## 🐛 Troubleshooting
