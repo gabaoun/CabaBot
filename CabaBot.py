@@ -304,6 +304,9 @@ async def fetch_tracks(query: str, allow_playlist: bool = False) -> List[dict]:
     opts = dict(YTDLP_OPTIONS)
     # permitir playlist apenas quando explicitado
     opts['noplaylist'] = not allow_playlist
+    # Se for playlist, adiciona 'playlistend' para parar de baixar após 20 músicas
+    if allow_playlist:
+        opts['playlistend'] = 20
     results = await search_ytdlp_async(query, opts)
     if not results:
         return []
