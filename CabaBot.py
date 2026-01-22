@@ -20,6 +20,7 @@ Version: 1.2.0
 import random
 import discord
 import asyncio
+import math
 import os
 import yt_dlp
 from discord import app_commands
@@ -35,9 +36,10 @@ load_dotenv(find_dotenv())
 # Define o caminho base do script e a localização do ffmpeg local
 SCRIPT_DIR = Path(__file__).parent
 FFMPEG_PATH = SCRIPT_DIR / "bin" / "ffmpeg" / "ffmpeg.exe"
+print(f"FFMPEG path: {FFMPEG_PATH} exists={FFMPEG_PATH.exists()}")
 
 # Áudio a ser reproduzido quando o bot ficar online (padrão: vídeo do YouTube)
-STARTUP_AUDIO_URL = random.choice(["https://youtu.be/3GqWF2a-fo8?si=GdBv6YfpBZOAqkCd", "https://www.youtube.com/watch?v=6xoJCJYLzZw", "https://www.youtube.com/watch?v=biZlbJAdyTE", "https://www.youtube.com/watch?v=sR9KWAIFSfc", "https://www.youtube.com/watch?v=xmf99leO-Z0", "https://www.youtube.com/watch?v=8zslY2eYJ9M"])
+STARTUP_AUDIO_URL = random.choice(["https://www.youtube.com/watch?v=6xoJCJYLzZw", "https://www.youtube.com/watch?v=biZlbJAdyTE", "https://www.youtube.com/watch?v=sR9KWAIFSfc", "https://www.youtube.com/watch?v=xmf99leO-Z0", "https://www.youtube.com/watch?v=8zslY2eYJ9M"])
 
 # Path para configuração persistente por guild
 CONFIG_PATH = SCRIPT_DIR / "config.json"
@@ -53,7 +55,8 @@ YTDLP_OPTIONS = {
 # Configurações reutilizáveis para FFmpeg
 FFMPEG_OPTIONS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn -loglevel error -af "anorm=m=rms:s=0.1"',  # Normalização de áudio
+    # Temporariamente usa loglevel info e sem filtro de áudio para facilitar debug
+    'options': '-vn -loglevel info',
 }
 
 
@@ -151,6 +154,8 @@ class CabaBot(discord.Client):
         self.loop_control = {}
         # Música atual tocando por guild: {'guild_id': MusicTrack}
         self.current_track = {}
+        # Sessões de votação por guild
+        self.vote_sessions = {}
 
     async def setup_hook(self):
         """
@@ -200,7 +205,12 @@ class CabaBot(discord.Client):
                 if not results:
                     return
                 track = results['entries'][0] if 'entries' in results else results
-                audio_url = track.get('url')
+                # Debug: inspeciona chave/estrutura retornada pelo yt-dlp
+                try:
+                    print(f"DEBUG startup track keys: {list(track.keys())}")
+                except Exception:
+                    print("DEBUG startup: track is not a mapping")
+                audio_url = _get_stream_url(track)
                 title = track.get('title', 'Música de boas-vindas')
                 if not audio_url or "youtube.com/watch" in audio_url:
                     return
@@ -212,10 +222,10 @@ class CabaBot(discord.Client):
                     options=FFMPEG_OPTIONS['options']
                 )
 
+
                 if isinstance(voice_client, discord.VoiceClient):
                     voice_client.play(source)
                     print(f"Tocando áudio de startup em {guild.name}: {title}")
-
             except Exception as exc:
                 print(f"Erro ao tocar áudio de startup em {guild.name}: {exc}")
 
@@ -258,6 +268,48 @@ def _extract(query: str, ydl_opts: dict) -> dict:
     """
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         return ydl.extract_info(query, download=False)
+
+
+def _get_stream_url(track: dict) -> Optional[str]:
+    """
+    Retorna a URL direta do stream de áudio a partir do dicionário retornado pelo yt-dlp.
+    Prioriza `track['url']` quando for um stream direto, caso contrário tenta
+    escolher uma URL de `formats` apropriada.
+    """
+    if not isinstance(track, dict):
+        return None
+
+    url = track.get('url')
+    # Se já for uma URL direta válida (e não apenas a página do YouTube), retorna
+    if isinstance(url, str) and url.startswith('http') and 'youtube.com/watch' not in url:
+        return url
+
+    # Tenta escolher uma URL dos formats (prefere formatos com áudio)
+    formats = track.get('formats') or []
+    if formats and isinstance(formats, list):
+        # percorre do fim (melhor qualidade normalmente no final)
+        for f in reversed(formats):
+            fu = f.get('url')
+            if fu and isinstance(fu, str):
+                acodec = f.get('acodec')
+                # ignora entradas sem codec de áudio
+                if acodec and acodec != 'none':
+                    return fu
+
+    return None
+
+
+async def fetch_tracks(query: str, allow_playlist: bool = False) -> List[dict]:
+    """Retorna uma lista de track dicts a partir de uma query (pode ser playlist)."""
+    opts = dict(YTDLP_OPTIONS)
+    # permitir playlist apenas quando explicitado
+    opts['noplaylist'] = not allow_playlist
+    results = await search_ytdlp_async(query, opts)
+    if not results:
+        return []
+    if 'entries' in results and isinstance(results['entries'], list):
+        return results['entries']
+    return [results]
 
 
 async def _validate_guild_and_member(interaction: discord.Interaction) -> discord.Member | None:
@@ -305,32 +357,149 @@ async def _get_or_connect_voice_client(
     voice_client = guild.voice_client
     
     try:
+        print(f"DEBUG: _get_or_connect_voice_client guild={getattr(guild,'name',guild.id)} channel={getattr(voice_channel,'name',None)} current_vc={voice_client}")
         if voice_client is None:
+            print("DEBUG: connecting to voice channel...")
             return await voice_channel.connect()
         elif voice_client.channel != voice_channel:
+            print(f"DEBUG: moving voice client from {voice_client.channel} to {voice_channel}")
             await voice_client.disconnect(force=True)
             return await voice_channel.connect()
+        else:
+            print("DEBUG: already connected to requested channel")
         return voice_client
     except Exception as e:
         print(f"Erro ao conectar ao canal de voz: {e}")
         return None
 
 
+async def _run_vote_for_action(
+    interaction: discord.Interaction,
+    guild: discord.Guild,
+    voice_channel: discord.VoiceChannel,
+    action_name: str,
+    timeout: int = 30,
+) -> bool:
+    """
+    Inicia uma votação pública no canal de texto da interação para aprovar
+    uma ação de controle de reprodução (pular/pausar/parar).
+
+    Retorna True se a votação atingir o limiar (>50% dos membros humanos
+    presentes no canal de voz) dentro do tempo limite, caso contrário False.
+    """
+    # Evita concorrência de votações por guild
+    if guild.id in bot.vote_sessions:
+        try:
+            await interaction.response.send_message(
+                "Já tem uma votação em andamento neste servidor, visse? Tenta de novo mais tarde.",
+                ephemeral=True,
+            )
+        except Exception:
+            pass
+        return False
+
+    # Conta apenas membros humanos no canal de voz
+    human_members = [m for m in voice_channel.members if not m.bot]
+    num_humans = len(human_members)
+    if num_humans == 0:
+        # Sem usuários humanos, nega por segurança
+        try:
+            await interaction.response.send_message("Não há participantes humanos no canal de voz.", ephemeral=True)
+        except Exception:
+            pass
+        return False
+
+    votes_needed = (num_humans // 2) + 1  # exige >50%
+
+    # Mensagem pública de votação
+    try:
+        vote_msg = await interaction.channel.send(
+            f"🗳️ Votação para **{action_name}** iniciada por {interaction.user.mention}.\n"
+            f"Reaja com ✅ para concordar. São necessários **{votes_needed}** votos de **{num_humans}** participantes em {timeout}s."
+        )
+    except Exception:
+        try:
+            await interaction.response.send_message("Não consegui iniciar a votação no canal.", ephemeral=True)
+        except Exception:
+            pass
+        return False
+
+    # adiciona reação inicial para facilitar votação
+    try:
+        await vote_msg.add_reaction("✅")
+    except Exception:
+        pass
+
+    # registra sessão para evitar concorrência
+    bot.vote_sessions[guild.id] = {'message_id': vote_msg.id, 'required': votes_needed}
+
+    # aguarda o tempo definido e então conta votos válidos
+    await asyncio.sleep(timeout)
+
+    passed = False
+    votes = 0
+    try:
+        # procura reação ✅ na mensagem
+        reaction = None
+        for r in vote_msg.reactions:
+            if str(r.emoji) == '✅':
+                reaction = r
+                break
+
+        if reaction is not None:
+            users = []
+            async for u in reaction.users():
+                if u.bot:
+                    continue
+                # conta apenas se o usuário ainda estiver no canal de voz
+                if any(u.id == m.id for m in voice_channel.members):
+                    users.append(u)
+            votes = len({u.id for u in users})
+
+        if votes >= votes_needed:
+            passed = True
+    except Exception:
+        passed = False
+
+    # limpa sessão
+    try:
+        del bot.vote_sessions[guild.id]
+    except Exception:
+        pass
+
+    # informa resultado
+    try:
+        if passed:
+            await interaction.channel.send(f"✅ Votação aprovada: {votes}/{num_humans} votos.")
+        else:
+            await interaction.channel.send(f"❌ Votação rejeitada: {votes}/{num_humans} votos.")
+    except Exception:
+        pass
+
+    return passed
+
+
 class MusicTrack:
     """Representa uma faixa de música na fila."""
-    
-    def __init__(self, url: str, title: str, requester: str):
+
+    def __init__(self, url: str, title: str, requester, requester_name: Optional[str] = None):
         """
         Inicializa uma faixa de música.
-        
+
         Args:
             url (str): URL do áudio
             title (str): Título da música
-            requester (str): Nome de quem requisitou
+            requester (int|str): ID do usuário que requisitou ou nome
+            requester_name (str | None): Nome do usuário (se requester for id)
         """
         self.url = url
         self.title = title
-        self.requester = requester
+        if isinstance(requester, int):
+            self.requester_id = requester
+            self.requester = requester_name or str(requester)
+        else:
+            self.requester_id = None
+            self.requester = str(requester)
 
 
 async def _play_next_track(guild: discord.Guild) -> None:
@@ -373,6 +542,7 @@ async def _play_next_track(guild: discord.Guild) -> None:
             before_options=FFMPEG_OPTIONS['before_options'],
             options=FFMPEG_OPTIONS['options']
         )
+        print(f"DEBUG _play_next_track: playing title={track.title} url_len={len(track.url) if track.url else 0} vc={voice_client} channel={getattr(voice_client.channel,'name',None)}")
         
         # Define callback para quando a música termina
         def after_track(error):
@@ -461,23 +631,53 @@ async def musica(interaction: discord.Interaction, url: str):
 
     # Se não for URL, adiciona prefixo de busca para YouTube Search
     query = 'ytsearch:' + url if not url.startswith("http") else url
-    results = await search_ytdlp_async(query, YTDLP_OPTIONS)
+    # Decide se deve permitir playlists/mixes (URLs com list= ou playlist)
+    allow_playlist = False
+    if url.startswith("http") and ("list=" in url or "playlist" in url):
+        allow_playlist = True
 
-    # Valida se encontrou algum resultado
-    if not results:
+    # Busca tracks (pode retornar múltiplas entradas se for playlist)
+    tracks = await fetch_tracks(query, allow_playlist=allow_playlist)
+    if not tracks:
         await interaction.followup.send("Não encontrei nada com esse nome, visse? Tenta outro termo ou URL.")
         return
 
-    # Extrai a faixa corretamente (pode estar em entries se for resultado de busca)
-    if 'entries' in results:
-        track = results['entries'][0]
-    else:
-        track = results
+    # Se for múltiplas faixas (playlist/mix), adiciona todas à fila
+    if len(tracks) > 1:
+        added = 0
+        # Inicializa a fila se necessário
+        if interaction.guild.id not in bot.music_queue:
+            bot.music_queue[interaction.guild.id] = []
 
-    # Obtém URL de áudio e título do vídeo
-    audio_url = track.get('url')
+        for entry in tracks:
+            audio_url_e = _get_stream_url(entry)
+            if not audio_url_e or "youtube.com/watch" in audio_url_e:
+                continue
+            title_e = entry.get('title', 'Música')
+            mt = MusicTrack(audio_url_e, title_e, interaction.user.id, interaction.user.display_name)
+            bot.music_queue[interaction.guild.id].append(mt)
+            added += 1
+
+        # Se nada estava tocando, toca a primeira da fila
+        voice_client = await _get_or_connect_voice_client(interaction.guild, voice_channel)
+        if voice_client is None:
+            await interaction.followup.send("Erro ao conectar ao canal de voz, tenta de novo aí.")
+            return
+
+        if not voice_client.is_playing() and bot.music_queue[interaction.guild.id]:
+            next_track = bot.music_queue[interaction.guild.id].pop(0)
+            bot.current_track[interaction.guild.id] = next_track
+            source = discord.FFmpegPCMAudio(next_track.url, executable=str(FFMPEG_PATH), **FFMPEG_OPTIONS)
+            voice_client.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(_play_next_track(interaction.guild), bot.loop))
+
+        await interaction.followup.send(f"📚 Playlist/mix adicionada à fila — {added} música(s) adicionadas.")
+        return
+
+    # Caso única faixa
+    track = tracks[0]
+    audio_url = _get_stream_url(track)
     title = track.get('title', 'Música')
-    
+
     # Validação: se não conseguiu extrair a URL real, retorna erro descritivo
     if not audio_url or "youtube.com/watch" in audio_url:
         await interaction.followup.send(
@@ -495,7 +695,7 @@ async def musica(interaction: discord.Interaction, url: str):
         )
 
         # Cria a faixa de música
-        track = MusicTrack(audio_url, title, interaction.user.display_name)
+        track = MusicTrack(audio_url, title, interaction.user.id, interaction.user.display_name)
         
         # Inicializa a fila para este servidor se não existir
         if interaction.guild.id not in bot.music_queue:
@@ -514,6 +714,7 @@ async def musica(interaction: discord.Interaction, url: str):
             if interaction.guild.id not in bot.loop_control:
                 bot.loop_control[interaction.guild.id] = {'loop_track': False, 'loop_queue': False}
             
+            print(f"DEBUG musica: about to play title={title} url_len={len(audio_url) if audio_url else 0} vc={voice_client} channel={getattr(voice_client.channel,'name',None)}")
             voice_client.play(source, after=after_track)
             await interaction.followup.send(f"🎵 Tô tocando: **{title}** — aproveita aí")
         else:
@@ -615,7 +816,11 @@ async def timer(interaction: discord.Interaction, segundos: int, url: str):
     else:
         track = results
 
-    audio_url = track.get('url')
+    try:
+        print(f"DEBUG timer track keys: {list(track.keys())}")
+    except Exception:
+        print("DEBUG timer: track is not a mapping")
+    audio_url = _get_stream_url(track)
     title = track.get('title', 'Música')
     
     # Valida extração de URL
@@ -633,6 +838,8 @@ async def timer(interaction: discord.Interaction, segundos: int, url: str):
         )
 
         if isinstance(voice_client, discord.VoiceClient):
+            # Armazena música atual para controle de permissões
+            bot.current_track[interaction.guild.id] = MusicTrack(audio_url, title, member.id, member.display_name)
             voice_client.play(source)
             await safe_send(f"{member.mention} ⏱️ Timer acabou — tocando agora: **{title}**, aproveita aí!")
     except Exception as e:
@@ -895,6 +1102,61 @@ async def agora(interaction: discord.Interaction):
             inline=False
         )
     
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@bot.tree.command(name="comandos", description="Lista os comandos disponíveis do bot")
+async def comandos(interaction: discord.Interaction):
+    """
+    Lista os comandos públicos do bot com uma breve descrição.
+    """
+    guild = interaction.guild
+    if not guild:
+        await interaction.response.send_message(
+            "Oxente — esse comando só funciona dentro de um servidor, visse?",
+            ephemeral=True
+        )
+        return
+
+    embed = discord.Embed(title="📜 Comandos do CabaBot", color=discord.Color.blurple())
+
+    embed.add_field(
+        name="🎶 Música",
+        value=(
+            "`/musica <url|nome>` — Toca uma música (aceita playlist).\n"
+            "`/parar` — Para e limpa a fila.\n"
+            "`/pausar` — Pausa a reprodução.\n"
+            "`/retomar` — Retoma a reprodução.\n"
+            "`/pular` — Pula para a próxima música.\n"
+            "`/limpar_fila` — Limpa a fila.\n"
+            "`/fila` — Mostra a fila atual.\n"
+            "`/agora` — Mostra a música que está tocando now."
+        ),
+        inline=False,
+    )
+
+    embed.add_field(
+        name="⏱️ Timers / Startup",
+        value=(
+            "`/timer <segundos> <url|nome>` — Define um timer que toca uma música.\n"
+            "`/startup_audio <true|false>` — Ativa/Desativa áudio de boas-vindas."
+        ),
+        inline=False,
+    )
+
+    embed.add_field(
+        name="🛠️ Utilitários",
+        value=(
+            "`/d <lados> <quantidade>` — Rola dados padrão.\n"
+            "`/dado_custom <dado> ...` — Rola dados customizados.\n"
+            "`/teste_atributo` — Inicia teste participativo.\n"
+            "`/ping` — Teste de resposta.\n"
+            "`/soma <n1> <n2>` — Soma dois números."
+        ),
+        inline=False,
+    )
+
+    embed.set_footer(text=f"Solicitado por {interaction.user.display_name}")
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
