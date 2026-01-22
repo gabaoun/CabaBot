@@ -87,7 +87,6 @@ Um bot Discord robusto, assíncrono e multifuncional desenvolvido com foco em re
  ┃   ┣ 📜 ffmpeg.exe
  ┃   ┣ 📜 ffplay.exe
  ┃   ┗ 📜 ffprobe.exe
- ┣ 📂 __pycache__/       # Cache compilado de Python (ignorado)
  ┣ 📜 CabaBot.py         # Arquivo principal do bot
  ┣ 📜 README.md          # Documentação do projeto
  ┣ 📜 .env               # Variáveis de ambiente (token do bot)
