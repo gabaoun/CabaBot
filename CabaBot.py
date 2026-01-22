@@ -2,9 +2,20 @@ import discord
 from discord import app_commands
 import asyncio
 import os
+from dotenv import load_dotenv, find_dotenv
 
-# Token
-TOKEN = "MTQ2Mzg5OTgzNDIyNTUyOTAwMA.Gulwv1.m0uOFF-vByHORHLBOEWlVXhlGcr694RPYginTg" 
+# Carrega .env (procura automaticamente no projeto)
+load_dotenv(find_dotenv())
+
+# Aceita TOKEN ou DISCORD_TOKEN, remove espaços/aspas acidentais
+_token_raw = os.getenv("TOKEN") or os.getenv("DISCORD_TOKEN")
+if not _token_raw:
+    raise RuntimeError("TOKEN não encontrado. Defina 'TOKEN' no arquivo .env ou nas variáveis de ambiente.")
+
+TOKEN = _token_raw.strip().strip('"').strip("'")
+
+# Segurança: mostra apenas o comprimento para confirmar leitura
+print(f"TOKEN carregado ({len(TOKEN)} caracteres)")
 
 class CabaBot(discord.Client):
     def __init__(self):
