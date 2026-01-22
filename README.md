@@ -15,7 +15,20 @@ Um bot Discord robusto, assíncrono e multifuncional desenvolvido com foco em re
 - **Toque customizável** - Reproduz qualquer música do YouTube ao fim do timer
 - **Feedback em tempo real** - Mostra status detalhado da operação
 
-### 🎮 Comandos Disponíveis
+### � Sistema de Rolagem de Dados
+- **Rolador de dados padrão** - d2, d4, d6, d8, d10, d12, d20, d100 com interface de escolha rápida
+- **Dados customizados** - Suporta qualquer número de lados (2-1000) e quantidade de dados
+- **Modificadores** - Adicione bônus/penalidades aos resultados
+- **Detalhamento** - Mostra dados individuais, subtotais e totais em embeds formatados
+
+### 🎭 Sistema Modular de Testes de Atributos
+- **Testes participativos** - Múltiplos usuários podem rolar para o mesmo teste
+- **Classe de Dificuldade (CD)** - Sistema de sucesso/falha baseado em CD
+- **Ranking em tempo real** - Resultados atualizados automaticamente com botão de participação
+- **Arquitetura modular** - Fácil expansão para novos tipos de testes
+- **Botões interativos** - Interface amigável com buttons do Discord
+
+### �🎮 Comandos Disponíveis
 
 | Comando | Descrição | Uso |
 |---------|-----------|-----|
@@ -26,11 +39,12 @@ Um bot Discord robusto, assíncrono e multifuncional desenvolvido com foco em re
 | `/retomar` | Retoma a música pausada | `/retomar` |
 | `/pular` | Pula para próxima música | `/pular` |
 | `/limpar_fila` | Limpa fila de reprodução | `/limpar_fila` |
-| `/teste` | Verifica conexão do bot | `/teste` |
+| `/ping` | Verifica conexão do bot | `/ping` |
 | `/soma` | Calculadora simples | `/soma num1:<float> num2:<float>` |
 | `/perfil` | Exibe avatar de membro | `/perfil membro:<@usuario>` |
 | `/d` | Rola dados padrão | `/d lados:<2\|4\|6\|8\|10\|12\|20\|100> quantidade:<1-100>` |
-| `/dado_custom` | Rola dados customizados | `/dado_custom lados:<2-1000> quantidade:<1-100>` |
+| `/dado_custom` | Rola dados customizados | `/dado_custom dado:<d20,3d6,etc> modificador:<int>` |
+| `/teste_atributo` | Inicia teste de atributo | `/teste_atributo tipo:<nome> cd:<int> dado:<d20>` |
 
 ## 🔧 Arquitetura Técnica
 
@@ -46,6 +60,8 @@ Um bot Discord robusto, assíncrono e multifuncional desenvolvido com foco em re
 - **Command Tree** - Slash commands modernos com auto-completar
 - **Error Handling** - Validações em cascata e mensagens de erro descritivas
 - **Resource Management** - Cleanup automático e gestão eficiente de conexões
+- **OOP Modular** - Classes `DiceRoller`, `TestConfig`, `RollButton`, `RollView` para fácil extensão
+- **UI Components** - Buttons e Views interativas para experiência do usuário aprimorada
 
 ## 📋 Pré-requisitos
 
@@ -145,11 +161,65 @@ Um bot Discord robusto, assíncrono e multifuncional desenvolvido com foco em re
 
 ### Rolar um dado customizado
 ```
-/dado_custom lados:50
-/dado_custom lados:100 quantidade:5
+/dado_custom dado:d20
+/dado_custom dado:3d6 modificador:2
+/dado_custom dado:2d10 modificador:-1
 ```
 
-## 🐛 Troubleshooting
+### Iniciar um teste de atributo
+```
+/teste_atributo tipo:Destreza cd:12 dado:d20
+/teste_atributo tipo:Força cd:15 dado:d20
+/teste_atributo tipo:Inteligência cd:10 dado:d20
+```
+Após executar, clique no botão 🎲 Rolar para participar do teste. O ranking atualiza automaticamente!
+## 📚 Documentação Adicional
+
+Este projeto inclui documentação completa para ajudar você a aproveitar ao máximo:
+
+- **[USAGE_GUIDE.md](USAGE_GUIDE.md)** - Guia completo de uso com exemplos práticos
+- **[DEVELOPMENT.md](DEVELOPMENT.md)** - Guia para desenvolvedores, arquitetura e extensões
+- **[CHANGELOG.md](CHANGELOG.md)** - Histórico de versões e mudanças
+- **[TECH_CHANGES.md](TECH_CHANGES.md)** - Detalhes técnicos das mudanças na versão 1.2.0
+## �️ Extensibilidade e Arquitetura Modular
+
+O CabaBot foi projetado com foco em extensibilidade. O sistema de testes de atributos utiliza uma arquitetura modular que permite adicionar novos tipos de testes facilmente.
+
+### Classes Principais
+
+#### `DiceRoller`
+Responsável por parsear e rolar dados. Suporta qualquer formato válido (d20, 3d6, 2d10, etc).
+
+```python
+roller = DiceRoller("3d6")
+roller.rolar()
+print(roller.total)  # Soma dos três dados
+print(roller.resultados)  # Lista [2, 5, 1]
+```
+
+#### `TestConfig`
+Configuração modular para testes. Armazena participantes e resultados.
+
+```python
+test = TestConfig(
+    tipo="Destreza",
+    cd=12,
+    dado_str="d20",
+    descricao="Teste de reflexo"
+)
+test.adicionar_resultado(user_id=123, nome="Jogador", resultado=18)
+```
+
+#### `RollButton` e `RollView`
+Componentes de UI interativa. Fáceis de estender com novas funcionalidades.
+
+### Como Adicionar Novos Testes
+
+1. Estenda `TestConfig` para adicionar lógica customizada
+2. Crie um novo `RollButton` se precisar de comportamento diferente
+3. Adicione um novo comando slash que instancia essas classes
+
+## �🐛 Troubleshooting
 
 **"YouTube bloqueou a extração"**
 - O YouTube pode bloquear yt-dlp periodicamente

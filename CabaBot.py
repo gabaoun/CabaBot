@@ -10,10 +10,11 @@ Funcionalidades principais:
 - Controles de reprodução (pausar, retomar, pular, parar)
 - Gerenciamento de filas de música por servidor
 - Rolador de dados padrão (d2 até d100) e customizados
+- Sistema modular de testes de atributos com participação de múltiplos usuários
 - Comandos de utilidade (calculadora, perfil de usuário, teste de conexão)
 
 Author: CabaBot Team
-Version: 1.1.0
+Version: 1.2.0
 """
 
 import random
@@ -25,7 +26,7 @@ from discord import app_commands
 from dotenv import load_dotenv, find_dotenv
 from pathlib import Path
 import json
-from typing import Dict, Any
+from typing import Dict, Any, List, Tuple
 
 # Carrega as variáveis de ambiente do arquivo .env
 # find_dotenv() procura automaticamente na árvore de diretórios
@@ -685,11 +686,433 @@ async def limpar_fila(interaction: discord.Interaction):
 
 
 # ============================================================================
+# SISTEMA MODULAR DE TESTES DE ATRIBUTOS
+# ============================================================================
+
+class DiceRoller:
+    """
+    Classe responsável por rolar dados com suporte a modificadores.
+    Torna o sistema extensível para diferentes tipos de testes.
+    """
+    
+    def __init__(self, dado_str: str):
+        """
+        Inicializa um rolador de dados.
+        
+        Args:
+            dado_str (str): Formato do dado (ex: 'd20', 'd6', '2d4')
+        """
+        self.dado_str = dado_str.lower().strip()
+        self.quantidade, self.lados = self._parse_dado()
+        self.resultados: List[int] = []
+        self.total = 0
+    
+    def _parse_dado(self) -> Tuple[int, int]:
+        """Extrai quantidade e lados do formato de dado."""
+        if 'd' not in self.dado_str:
+            raise ValueError(f"Formato inválido: {self.dado_str}")
+        
+        partes = self.dado_str.split('d')
+        try:
+            qtd = int(partes[0]) if partes[0] else 1
+            lados = int(partes[1])
+            
+            if qtd < 1 or qtd > 100:
+                raise ValueError("Quantidade deve estar entre 1 e 100")
+            if lados < 2 or lados > 1000:
+                raise ValueError("Lados deve estar entre 2 e 1000")
+            
+            return qtd, lados
+        except (ValueError, IndexError):
+            raise ValueError(f"Formato inválido: {self.dado_str}")
+    
+    def rolar(self) -> None:
+        """Rola os dados e armazena os resultados."""
+        self.resultados = [random.randint(1, self.lados) for _ in range(self.quantidade)]
+        self.total = sum(self.resultados)
+    
+    def format_resultado(self) -> str:
+        """Formata o resultado de forma legível."""
+        if not self.resultados:
+            return "Nenhum resultado disponível"
+        
+        if self.quantidade == 1:
+            return f"**{self.resultados[0]}**"
+        else:
+            detalhes = ", ".join(map(str, self.resultados))
+            return f"`{detalhes}` → **{self.total}**"
+
+
+class TestConfig:
+    """
+    Configuração modular para testes de atributos.
+    Permite adicionar novos testes facilmente.
+    """
+    
+    def __init__(self, tipo: str, cd: int, dado_str: str, descricao: str = ""):
+        """
+        Inicializa uma configuração de teste.
+        
+        Args:
+            tipo (str): Nome do atributo/habilidade testada
+            cd (str): Classe de Dificuldade
+            dado_str (str): Formato do dado a rolar
+            descricao (str): Descrição adicional do teste
+        """
+        self.tipo = tipo.capitalize()
+        self.cd = cd
+        self.dado = DiceRoller(dado_str)
+        self.descricao = descricao
+        self.participantes: Dict[int, Tuple[str, int]] = {}  # user_id -> (nome, resultado)
+    
+    def adicionar_resultado(self, user_id: int, nome: str, resultado: int) -> None:
+        """Adiciona o resultado de um participante."""
+        self.participantes[user_id] = (nome, resultado)
+    
+    def get_ranking(self) -> str:
+        """Retorna o ranking formatado dos participantes."""
+        if not self.participantes:
+            return "Nenhum participante ainda."
+        
+        ordenado = sorted(self.participantes.values(), key=lambda x: x[1], reverse=True)
+        ranking = []
+        
+        for idx, (nome, resultado) in enumerate(ordenado, 1):
+            emoji = "🥇" if idx == 1 else "🥈" if idx == 2 else "🥉" if idx == 3 else f"{idx}."
+            status = "✅ SUCESSO" if resultado >= self.cd else "❌ FALHA"
+            ranking.append(f"{emoji} **{nome}**: {resultado} {status}")
+        
+        return "\n".join(ranking)
+
+
+class RollButton(discord.ui.Button):
+    """
+    Botão para participar de um teste de atributo.
+    Rola o dado configurado e armazena o resultado.
+    """
+    
+    def __init__(self, test_config: TestConfig, test_message_id: int):
+        """
+        Inicializa o botão de rolagem.
+        
+        Args:
+            test_config (TestConfig): Configuração do teste
+            test_message_id (int): ID da mensagem do teste para atualizar
+        """
+        super().__init__(label="🎲 Rolar", style=discord.ButtonStyle.primary)
+        self.test_config = test_config
+        self.test_message_id = test_message_id
+    
+    async def callback(self, interaction: discord.Interaction):
+        """Processa o clique no botão."""
+        # Verifica se o usuário já participou
+        if interaction.user.id in self.test_config.participantes:
+            await interaction.response.send_message(
+                f"Você já rolou para este teste, {interaction.user.mention}!",
+                ephemeral=True
+            )
+            return
+        
+        # Rola o dado
+        self.test_config.dado.rolar()
+        resultado = self.test_config.dado.total
+        
+        # Armazena o resultado
+        self.test_config.adicionar_resultado(
+            interaction.user.id,
+            interaction.user.display_name,
+            resultado
+        )
+        
+        # Resposta ao usuário
+        status = "✅ SUCESSO" if resultado >= self.test_config.cd else "❌ FALHA"
+        await interaction.response.send_message(
+            f"🎲 **{self.test_config.tipo}** ({self.test_config.dado.dado_str})\n"
+            f"Seu resultado: **{resultado}** {status}\n"
+            f"CD necessária: **{self.test_config.cd}**",
+            ephemeral=True
+        )
+        
+        # Atualiza a mensagem do teste com o ranking
+        try:
+            channel = interaction.channel
+            message = await channel.fetch_message(self.test_message_id)
+            
+            # Cria novo embed com ranking atualizado
+            embed = message.embeds[0] if message.embeds else discord.Embed()
+            embed.set_field_at(
+                2,  # Campo do ranking (3º campo)
+                name="📊 Ranking",
+                value=self.test_config.get_ranking(),
+                inline=False
+            )
+            await message.edit(embed=embed)
+        except Exception as e:
+            print(f"Erro ao atualizar mensagem do teste: {e}")
+
+
+class RollView(discord.ui.View):
+    """View que contém o botão de rolagem."""
+    
+    def __init__(self, test_config: TestConfig, test_message_id: int, timeout: int = 3600):
+        """
+        Inicializa a view com o botão de rolagem.
+        
+        Args:
+            test_config (TestConfig): Configuração do teste
+            test_message_id (int): ID da mensagem do teste
+            timeout (int): Tempo em segundos antes do botão expirar
+        """
+        super().__init__(timeout=timeout)
+        self.add_item(RollButton(test_config, test_message_id))
+
+
+# Armazena testes ativos por canal
+active_tests: Dict[int, TestConfig] = {}
+
+
+# ============================================================================
 # COMANDOS - UTILIDADE
 # ============================================================================
 
-@bot.tree.command(name="teste", description="Comando de teste simples")
-async def teste(interaction: discord.Interaction):
+@bot.tree.command(name="d", description="Rola um dado padrão (d2 até d100)")
+@app_commands.describe(
+    lados="Número de lados do dado (2, 4, 6, 8, 10, 12, 20, 100)",
+    quantidade="Quantidade de dados a rolar (padrão: 1, máximo 100)"
+)
+@app_commands.choices(lados=[
+    discord.app_commands.Choice(name="d2", value=2),
+    discord.app_commands.Choice(name="d4", value=4),
+    discord.app_commands.Choice(name="d6", value=6),
+    discord.app_commands.Choice(name="d8", value=8),
+    discord.app_commands.Choice(name="d10", value=10),
+    discord.app_commands.Choice(name="d12", value=12),
+    discord.app_commands.Choice(name="d20", value=20),
+    discord.app_commands.Choice(name="d100", value=100),
+])
+async def rolar_dado(interaction: discord.Interaction, lados: int, quantidade: int = 1):
+    """
+    Comando para rolar dados padrão.
+    
+    Permite rolar um ou mais dados com número de lados pré-definido,
+    mostrando os resultados individuais e o total.
+    
+    Args:
+        interaction (discord.Interaction): A interação do slash command
+        lados (int): Número de lados do dado
+        quantidade (int): Quantidade de dados a rolar
+    """
+    # Valida a quantidade de dados
+    if quantidade < 1 or quantidade > 100:
+        await interaction.response.send_message(
+            f"❌ Quantidade inválida. Use entre 1 e 100 dados, visse?",
+            ephemeral=True
+        )
+        return
+    
+    try:
+        # Usa o DiceRoller para manter consistência
+        roller = DiceRoller(f"{quantidade}d{lados}")
+        roller.rolar()
+        
+        # Formata a resposta
+        embed = discord.Embed(
+            title=f"🎲 Rolagem de {quantidade}d{lados}",
+            color=discord.Color.blue()
+        )
+        
+        if quantidade == 1:
+            embed.add_field(
+                name="Resultado",
+                value=f"**{roller.resultados[0]}**",
+                inline=False
+            )
+        else:
+            detalhes = ", ".join(map(str, roller.resultados))
+            embed.add_field(
+                name="Dados Individuais",
+                value=f"`{detalhes}`",
+                inline=False
+            )
+            embed.add_field(
+                name="Total",
+                value=f"**{roller.total}**",
+                inline=False
+            )
+        
+        embed.set_footer(text=f"Solicitado por {interaction.user.display_name}")
+        await interaction.response.send_message(embed=embed)
+        
+    except ValueError as e:
+        await interaction.response.send_message(
+            f"❌ Erro: {str(e)}",
+            ephemeral=True
+        )
+
+
+@bot.tree.command(name="dado_custom", description="Rola um dado com número de lados customizado")
+@app_commands.describe(
+    dado="Formato do dado (ex: d20, 3d6, 2d10)",
+    modificador="Modificador a somar ao resultado (opcional)"
+)
+async def dado_customizado(interaction: discord.Interaction, dado: str, modificador: int = 0):
+    """
+    Comando para rolar dados com número de lados customizado.
+    
+    Permite rolar dados em qualquer formato, com opção de modificador.
+    
+    Args:
+        interaction (discord.Interaction): A interação do slash command
+        dado (str): Formato do dado (ex: d20, 3d6, 2d10)
+        modificador (int): Modificador a somar ao resultado
+    """
+    try:
+        # Valida e rola o dado
+        roller = DiceRoller(dado)
+        roller.rolar()
+        
+        total_com_mod = roller.total + modificador
+        
+        # Formata a resposta
+        embed = discord.Embed(
+            title=f"🎲 Rolagem de {roller.dado_str.upper()}",
+            color=discord.Color.green()
+        )
+        
+        if roller.quantidade == 1:
+            embed.add_field(
+                name="Resultado",
+                value=f"**{roller.resultados[0]}**",
+                inline=False
+            )
+        else:
+            detalhes = ", ".join(map(str, roller.resultados))
+            embed.add_field(
+                name="Dados Individuais",
+                value=f"`{detalhes}`",
+                inline=False
+            )
+            embed.add_field(
+                name="Subtotal",
+                value=f"**{roller.total}**",
+                inline=False
+            )
+        
+        if modificador != 0:
+            operador = "+" if modificador > 0 else ""
+            embed.add_field(
+                name="Modificador",
+                value=f"{operador}{modificador}",
+                inline=True
+            )
+            embed.add_field(
+                name="Total com Modificador",
+                value=f"**{total_com_mod}**",
+                inline=True
+            )
+        
+        embed.set_footer(text=f"Solicitado por {interaction.user.display_name}")
+        await interaction.response.send_message(embed=embed)
+        
+    except ValueError as e:
+        await interaction.response.send_message(
+            f"❌ Erro: {str(e)}\n💡 Formato válido: d20, 3d6, 2d10, etc.",
+            ephemeral=True
+        )
+
+
+@bot.tree.command(name="teste_atributo", description="Inicia um teste de atributo para múltiplos participantes")
+@app_commands.describe(
+    tipo="Tipo de atributo testado (ex: Destreza, Força, Inteligência)",
+    cd="Classe de Dificuldade (CD) para o teste",
+    dado="Tipo de dado a rolar (ex: d20, d12, 2d10)"
+)
+async def teste_atributo(interaction: discord.Interaction, tipo: str, cd: int, dado: str = "d20"):
+    """
+    Comando para iniciar um teste de atributo participativo.
+    
+    Cria um teste onde múltiplos usuários podem clicar em um botão para rolar
+    dados. Os resultados são comparados com a CD e exibidos em ranking.
+    
+    Args:
+        interaction (discord.Interaction): A interação do slash command
+        tipo (str): Nome do atributo/habilidade testada
+        cd (int): Classe de Dificuldade do teste
+        dado (str): Formato do dado a usar
+    
+    Exemplo:
+        /teste_atributo tipo:Destreza cd:12 dado:d20
+    """
+    # Valida os parâmetros
+    if cd < 1:
+        await interaction.response.send_message(
+            "❌ Classe de Dificuldade deve ser maior que 0.",
+            ephemeral=True
+        )
+        return
+    
+    try:
+        # Cria a configuração do teste
+        test_config = TestConfig(
+            tipo=tipo,
+            cd=cd,
+            dado_str=dado,
+            descricao=f"Teste de {tipo.lower()}"
+        )
+    except ValueError as e:
+        await interaction.response.send_message(
+            f"❌ Erro na configuração do teste: {str(e)}",
+            ephemeral=True
+        )
+        return
+    
+    # Cria o embed do teste
+    embed = discord.Embed(
+        title=f"🎭 Teste de {test_config.tipo}",
+        description=test_config.descricao,
+        color=discord.Color.purple()
+    )
+    
+    embed.add_field(
+        name="Dado",
+        value=f"**{test_config.dado.dado_str.upper()}**",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="Classe de Dificuldade",
+        value=f"**CD {test_config.cd}**",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="📊 Ranking",
+        value="Nenhum participante ainda.",
+        inline=False
+    )
+    
+    embed.set_footer(text=f"Criado por {interaction.user.display_name}")
+    
+    # Envia a mensagem com o botão
+    view = RollView(test_config, 0)  # ID será atualizado após envio
+    await interaction.response.send_message(embed=embed, view=view)
+    
+    # Obtém a mensagem enviada para armazenar o ID
+    response = await interaction.original_response()
+    
+    # Atualiza o ID da mensagem na view
+    for item in view.children:
+        if isinstance(item, RollButton):
+            item.test_message_id = response.id
+    
+    # Armazena o teste ativo
+    active_tests[response.id] = test_config
+    
+    print(f"✅ Teste de {tipo} iniciado no canal {interaction.channel_id}")
+
+
+@bot.tree.command(name="ping", description="Comando de teste simples")
+async def ping(interaction: discord.Interaction):
     """
     Comando de teste para verificar se o bot está responsivo.
     
@@ -750,100 +1173,6 @@ async def perfil(interaction: discord.Interaction, membro: discord.Member):
     embed.set_image(url=avatar_url)
     
     await interaction.response.send_message(embed=embed)
-
-
-@bot.tree.command(name="d", description="Rola um dado padrão (d2 até d100)")
-@app_commands.describe(
-    lados="Número de lados do dado (2, 4, 6, 8, 10, 12, 20, 100)",
-    quantidade="Quantidade de dados a rolar (padrão: 1)"
-)
-@app_commands.choices(lados=[
-    discord.app_commands.Choice(name="d2", value=2),
-    discord.app_commands.Choice(name="d4", value=4),
-    discord.app_commands.Choice(name="d6", value=6),
-    discord.app_commands.Choice(name="d8", value=8),
-    discord.app_commands.Choice(name="d10", value=10),
-    discord.app_commands.Choice(name="d12", value=12),
-    discord.app_commands.Choice(name="d20", value=20),
-    discord.app_commands.Choice(name="d100", value=100),
-])
-async def rolar_dado(interaction: discord.Interaction, lados: int, quantidade: int = 1):
-    """
-    Comando para rolar dados padrão.
-    
-    Permite rolar um ou mais dados com número de lados pré-definido.
-    
-    Args:
-        interaction (discord.Interaction): A interação do slash command
-        lados (int): Número de lados do dado (2, 4, 6, 8, 10, 12, 20, 100)
-        quantidade (int): Quantidade de dados a rolar (padrão: 1)
-    """
-    # Valida a quantidade de dados
-    if quantidade < 1 or quantidade > 100:
-        await interaction.response.send_message(
-            f"❌ Quantidade inválida. Use entre 1 e 100 dados, visse?",
-            ephemeral=True
-        )
-        return
-    
-    # Rola os dados
-    resultados = [random.randint(1, lados) for _ in range(quantidade)]
-    total = sum(resultados)
-    
-    # Formata a resposta
-    if quantidade == 1:
-        resposta = f"🎲 **d{lados}**: **{resultados[0]}**"
-    else:
-        resultados_str = ", ".join(map(str, resultados))
-        resposta = f"🎲 **{quantidade}d{lados}**\nResultados: `{resultados_str}`\n**Total: {total}**"
-    
-    await interaction.response.send_message(resposta)
-
-
-@bot.tree.command(name="dado_custom", description="Rola um dado com número de lados customizado")
-@app_commands.describe(
-    lados="Número de lados do dado (mínimo 2, máximo 1000)",
-    quantidade="Quantidade de dados a rolar (padrão: 1, máximo 100)"
-)
-async def dado_customizado(interaction: discord.Interaction, lados: int, quantidade: int = 1):
-    """
-    Comando para rolar dados com número de lados customizado.
-    
-    Permite rolar um ou mais dados com qualquer número de lados dentro dos limites.
-    
-    Args:
-        interaction (discord.Interaction): A interação do slash command
-        lados (int): Número de lados do dado (2 a 1000)
-        quantidade (int): Quantidade de dados a rolar (1 a 100)
-    """
-    # Valida o número de lados
-    if lados < 2 or lados > 1000:
-        await interaction.response.send_message(
-            f"❌ Número de lados inválido. Use entre 2 e 1000, visse?",
-            ephemeral=True
-        )
-        return
-    
-    # Valida a quantidade de dados
-    if quantidade < 1 or quantidade > 100:
-        await interaction.response.send_message(
-            f"❌ Quantidade inválida. Use entre 1 e 100 dados, visse?",
-            ephemeral=True
-        )
-        return
-    
-    # Rola os dados
-    resultados = [random.randint(1, lados) for _ in range(quantidade)]
-    total = sum(resultados)
-    
-    # Formata a resposta
-    if quantidade == 1:
-        resposta = f"🎲 **d{lados}**: **{resultados[0]}**"
-    else:
-        resultados_str = ", ".join(map(str, resultados))
-        resposta = f"🎲 **{quantidade}d{lados}**\nResultados: `{resultados_str}`\n**Total: {total}**"
-    
-    await interaction.response.send_message(resposta)
 
 
 # ============================================================================
