@@ -441,7 +441,7 @@ async def timer(interaction: discord.Interaction, segundos: int, url: str):
 
     # Confirma a interação com defer para evitar timeout (comando pode levar tempo)
     if not interaction.response.is_done():
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer()
     
     # Informa o usuário que o timer foi iniciado
     await safe_send(
@@ -515,9 +515,9 @@ async def timer(interaction: discord.Interaction, segundos: int, url: str):
 
         if isinstance(voice_client, discord.VoiceClient):
             voice_client.play(source)
-            await safe_send(f"{member.mention} ⏱️ Timer acabou — tocando agora: **{title}**, aproveita aí!", ephemeral=True)
+            await safe_send(f"{member.mention} ⏱️ Timer acabou — tocando agora: **{title}**, aproveita aí!")
     except Exception as e:
-        await safe_send(f"{member.mention} ⏱️ Acabou o timer mas deu ruim ao reproduzir: {str(e)[:50]}", ephemeral=True)
+        await safe_send(f"{member.mention} ⏱️ Acabou o timer mas deu ruim ao reproduzir: {str(e)[:50]}")
 
 
 # ============================================================================
