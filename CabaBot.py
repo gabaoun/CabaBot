@@ -55,10 +55,10 @@ YTDLP_OPTIONS = {
 # Configurações reutilizáveis para FFmpeg
 FFMPEG_OPTIONS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    # Temporariamente usa loglevel info e sem filtro de áudio para facilitar debug
-    'options': '-vn -loglevel info',
+    # -af "loudnorm...": Normaliza o áudio para -14 LUFS (padrão confortável)
+    # -loglevel error: Reduz o lixo no terminal
+    'options': '-vn -loglevel error -af "loudnorm=I=-14:TP=-1.5:LRA=11"',
 }
-
 
 def load_config() -> Dict[str, Any]:
     """Carrega o arquivo de configuração (JSON). Retorna dicionário vazio se não existir."""
