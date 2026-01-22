@@ -1,5 +1,7 @@
 import discord
 from discord import app_commands
+import asyncio
+import os
 
 # Token
 TOKEN = "MTQ2Mzg5OTgzNDIyNTUyOTAwMA.Gulwv1.m0uOFF-vByHORHLBOEWlVXhlGcr694RPYginTg" 
@@ -8,6 +10,10 @@ class CabaBot(discord.Client):
     def __init__(self):
         # Intents default são mais leves e suficientes para a maioria dos bots
         intents = discord.Intents.default()
+        intents.voice_states = True  # Necessário para comandos relacionados a voz
+        intents.members = True  # Necessário para acessar informações dos membros
+        intents.messages = True  # Necessário para comandos relacionados a mensagens
+        intents.message_content = True  # Necessário para ler o conteúdo das mensagens
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
 
@@ -23,6 +29,38 @@ class CabaBot(discord.Client):
 bot = CabaBot()
 
 # --- COMANDOS ---
+
+@bot.tree.command(name="timer", description="Define um timer em segundos")
+@app_commands.describe(segundos="Quantos segundos quer esperar?")
+async def timer(interaction: discord.Interaction, segundos: int):
+    async def safe_send(content: str, *, ephemeral: bool = True):
+        if interaction.response.is_done():
+            await interaction.followup.send(content, ephemeral=ephemeral)
+        else:
+            await interaction.response.send_message(content, ephemeral=ephemeral)
+
+    if interaction.guild is None:
+        await safe_send("Este comando só funciona dentro de um servidor.", ephemeral=True)
+        return
+
+    if not isinstance(interaction.user, discord.Member):
+        await safe_send("Este comando só funciona dentro de um servidor.", ephemeral=True)
+        return
+    member: discord.Member = interaction.user
+
+    if not member.voice or not member.voice.channel:
+        await safe_send("Você precisa estar em um canal de voz!", ephemeral=True)
+        return
+
+    # Confirme a interação, pois aguardaremos (evita timeouts). 
+    if not interaction.response.is_done():
+        await interaction.response.defer(ephemeral=True)
+
+    # Trabalho de longa duração
+    await asyncio.sleep(segundos)
+
+    # Enviar resultado como acompanhamento (ou como resposta, caso ainda não tenha sido respondido).
+    await safe_send(f"{member.mention} ⏱️ Timer finalizado: {segundos} segundos", ephemeral=True)
 
 @bot.tree.command(name="teste", description="Comando de teste simples")
 async def teste(interaction: discord.Interaction):
