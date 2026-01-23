@@ -38,7 +38,7 @@ FFMPEG_PATH = SCRIPT_DIR / "bin" / "ffmpeg" / "ffmpeg.exe"
 print(f"FFMPEG path: {FFMPEG_PATH} exists={FFMPEG_PATH.exists()}")
 
 # Áudio a ser reproduzido quando o bot ficar online (padrão: vídeo do YouTube)
-STARTUP_AUDIO_URL = random.choice(["https://www.youtube.com/watch?v=6xoJCJYLzZw", "https://www.youtube.com/watch?v=biZlbJAdyTE", "https://www.youtube.com/watch?v=sR9KWAIFSfc", "https://www.youtube.com/watch?v=xmf99leO-Z0", "https://www.youtube.com/watch?v=8zslY2eYJ9M"])
+STARTUP_AUDIO_URL = random.choice(["https://www.youtube.com/watch?v=pyBEvMXVfL0", "https://youtu.be/3GqWF2a-fo8?si=65YV75tAfRXElNei", "https://www.youtube.com/watch?v=H__Ta_PiBU8", "https://www.youtube.com/watch?v=6xoJCJYLzZw", "https://www.youtube.com/watch?v=biZlbJAdyTE", "https://www.youtube.com/watch?v=sR9KWAIFSfc", "https://www.youtube.com/watch?v=xmf99leO-Z0", "https://www.youtube.com/watch?v=8zslY2eYJ9M"])
 
 # Path para configuração persistente por guild
 CONFIG_PATH = SCRIPT_DIR / "config.json"
@@ -155,6 +155,8 @@ class CabaBot(discord.Client):
         self.current_track = {}
         # Sessões de votação por guild
         self.vote_sessions = {}
+        # Controle de carregamento do RPG
+        self.rpg_loaded: bool = False
 
     async def setup_hook(self):
         """
@@ -1866,6 +1868,52 @@ async def perfil(interaction: discord.Interaction, membro: discord.Member):
 # ============================================================================
 # EXECUÇÃO PRINCIPAL
 # ============================================================================
+
+# ============================================================================
+# CARREGAMENTO DO SISTEMA RPG
+# ============================================================================
+
+async def load_rpg_commands():
+    """Carrega os comandos RPG no bot."""
+    from pathlib import Path
+    from rpg_system import CharacterRepository, create_event_repository_with_defaults, create_npc_repository_with_defaults
+    
+    # Importa as Cogs do RPG
+    from rpg_commands import RPGCog
+    from rpg_events_commands import EventsCog
+    
+    # Inicializa repositórios compartilhados
+    rpg_data_path = Path(__file__).parent / "rpg_data"
+    character_repo = CharacterRepository(rpg_data_path)
+    event_repo = create_event_repository_with_defaults()
+    npc_repo = create_npc_repository_with_defaults()
+    
+    # Adiciona a Cog principal de RPG
+    rpg_cog = RPGCog(bot)  # type: ignore
+    await bot.add_cog(rpg_cog)  # type: ignore
+    
+    # Adiciona a Cog de eventos com os repositórios compartilhados
+    events_cog = EventsCog(bot, character_repo, event_repo, npc_repo)  # type: ignore
+    await bot.add_cog(events_cog)  # type: ignore
+    
+    print("✅ Sistema RPG carregado com sucesso!")
+
+
+@bot.event
+async def on_ready():
+    """Evento disparado quando o bot está pronto."""
+    print(f"\n✅ Bot {bot.user} conectado!")
+    print("📊 Sincronizando commands...")
+    
+    # Se ainda não carregou o RPG, carrega agora
+    if not bot.rpg_loaded:
+        try:
+            await load_rpg_commands()
+            bot.rpg_loaded = True
+        except Exception as e:
+            print(f"⚠️  Erro ao carregar RPG: {e}")
+            bot.rpg_loaded = False
+
 
 if __name__ == "__main__":
     """
