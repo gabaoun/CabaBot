@@ -38,7 +38,7 @@ FFMPEG_PATH = SCRIPT_DIR / "bin" / "ffmpeg" / "ffmpeg.exe"
 print(f"FFMPEG path: {FFMPEG_PATH} exists={FFMPEG_PATH.exists()}")
 
 # Áudio a ser reproduzido quando o bot ficar online (padrão: vídeo do YouTube)
-STARTUP_AUDIO_URL = random.choice(["https://www.youtube.com/watch?v=pyBEvMXVfL0", "https://youtu.be/3GqWF2a-fo8?si=65YV75tAfRXElNei", "https://www.youtube.com/watch?v=H__Ta_PiBU8", "https://www.youtube.com/watch?v=6xoJCJYLzZw", "https://www.youtube.com/watch?v=biZlbJAdyTE", "https://www.youtube.com/watch?v=sR9KWAIFSfc", "https://www.youtube.com/watch?v=xmf99leO-Z0", "https://www.youtube.com/watch?v=8zslY2eYJ9M"])
+STARTUP_AUDIO_URL = random.choice(["https://www.youtube.com/watch?v=YeJj7v3f-vA", "https://www.youtube.com/watch?v=pyBEvMXVfL0", "https://youtu.be/3GqWF2a-fo8?si=65YV75tAfRXElNei", "https://www.youtube.com/watch?v=H__Ta_PiBU8", "https://www.youtube.com/watch?v=6xoJCJYLzZw", "https://www.youtube.com/watch?v=biZlbJAdyTE", "https://www.youtube.com/watch?v=sR9KWAIFSfc", "https://www.youtube.com/watch?v=xmf99leO-Z0", "https://www.youtube.com/watch?v=8zslY2eYJ9M"])
 
 # Path para configuração persistente por guild
 CONFIG_PATH = SCRIPT_DIR / "config.json"
@@ -91,7 +91,13 @@ def guild_startup_enabled(guild_id: int) -> bool:
     """
     key = str(guild_id)
     guilds = _CONFIG.get("guilds", {})
-    return bool(guilds.get(key, True))
+    val = guilds.get(key, True)
+    
+    # Se for dict, busca a chave 'startup'
+    if isinstance(val, dict):
+        return bool(val.get("startup", True))
+    # Se for bool (legado), retorna direto
+    return bool(val)
 
 
 def set_guild_startup(guild_id: int, enabled: bool) -> None:
@@ -99,7 +105,14 @@ def set_guild_startup(guild_id: int, enabled: bool) -> None:
     key = str(guild_id)
     if "guilds" not in _CONFIG:
         _CONFIG["guilds"] = {}
-    _CONFIG["guilds"][key] = bool(enabled)
+        
+    # Se não existe ou é bool, converte para dict
+    current = _CONFIG["guilds"].get(key)
+    if not isinstance(current, dict):
+        _CONFIG["guilds"][key] = {"startup": enabled}
+    else:
+        _CONFIG["guilds"][key]["startup"] = enabled
+        
     save_config(_CONFIG)
 
 # Obtém o token do Discord das variáveis de ambiente
@@ -157,6 +170,27 @@ class CabaBot(discord.Client):
         self.vote_sessions = {}
         # Controle de carregamento do RPG
         self.rpg_loaded: bool = False
+
+    def get_guild_config(self, guild_id: int) -> dict:
+        """Retorna a configuração específica de uma guild."""
+        key = str(guild_id)
+        if "guilds" not in _CONFIG:
+            _CONFIG["guilds"] = {}
+        if key not in _CONFIG["guilds"]:
+            _CONFIG["guilds"][key] = {}
+        # Garante que é um dict (retrocompatibilidade se for apenas bool antes)
+        if not isinstance(_CONFIG["guilds"][key], dict):
+            # Se era bool (startup audio), converte para dict preservando startup
+            old_val = _CONFIG["guilds"][key]
+            _CONFIG["guilds"][key] = {"startup": old_val}
+        
+        return _CONFIG["guilds"][key]
+
+    def set_guild_config(self, guild_id: int, key: str, value: Any) -> None:
+        """Define uma configuração específica para uma guild."""
+        g_conf = self.get_guild_config(guild_id)
+        g_conf[key] = value
+        save_config(_CONFIG)
 
     async def setup_hook(self):
         """

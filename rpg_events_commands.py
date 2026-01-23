@@ -38,7 +38,25 @@ class EventsCog(commands.Cog):
     ):
         """Dispara um evento aleatório no servidor."""
         
-        # Obtém um evento aleatório
+        # 1. Determina o canal alvo
+        target_channel = interaction.channel
+        rpg_channel_id = None
+        try:
+            config = self.bot.get_guild_config(interaction.guild_id)
+            rpg_channel_id = config.get("rpg_channel_id")
+        except AttributeError:
+            pass
+
+        if rpg_channel_id:
+            fetched_channel = self.bot.get_channel(rpg_channel_id)
+            if fetched_channel:
+                target_channel = fetched_channel
+            else:
+                print(f"⚠️ [RPG] Canal configurado {rpg_channel_id} não encontrado.")
+                await interaction.response.send_message("⚠️ Canal RPG configurado não encontrado. Reconfigure com `/rpg canal`.", ephemeral=True)
+                return
+
+        # 2. Obtém evento
         event = self.event_repo.get_random_event(dificuldade)
         if not event:
             await interaction.response.send_message(
@@ -61,11 +79,21 @@ class EventsCog(commands.Cog):
         )
         
         view = EventResponseView(self, interaction, event)
-        await interaction.response.send_message(
-            f"@everyone Um evento começou!",
-            embed=embed,
-            view=view
-        )
+        
+        # 3. Envia para o canal alvo com segurança
+        try:
+            # Se o canal alvo for diferente da interação, manda lá e responde efemero aqui
+            if target_channel.id != interaction.channel_id:
+                await target_channel.send(f"@everyone Um evento começou!", embed=embed, view=view)
+                await interaction.response.send_message(f"✅ Evento disparado em {target_channel.mention}!", ephemeral=True)
+            else:
+                # Se for o mesmo canal, responde normal
+                await interaction.response.send_message(f"@everyone Um evento começou!", embed=embed, view=view)
+                
+        except (discord.Forbidden, discord.NotFound) as e:
+            print(f"⚠️ [RPG] Erro ao enviar evento: {e}")
+            if not interaction.response.is_done():
+                await interaction.response.send_message("❌ Erro ao acessar o canal do evento.", ephemeral=True)
         
         self.active_events[interaction.guild_id] = {
             "event": event,
@@ -77,6 +105,24 @@ class EventsCog(commands.Cog):
     async def encounter_npc(self, interaction: discord.Interaction):
         """Encontra um NPC aleatório para uma batalha ou negociação."""
         
+        # 1. Determina o canal alvo
+        target_channel = interaction.channel
+        rpg_channel_id = None
+        try:
+            config = self.bot.get_guild_config(interaction.guild_id)
+            rpg_channel_id = config.get("rpg_channel_id")
+        except AttributeError:
+            pass
+
+        if rpg_channel_id:
+            fetched_channel = self.bot.get_channel(rpg_channel_id)
+            if fetched_channel:
+                target_channel = fetched_channel
+            else:
+                print(f"⚠️ [RPG] Canal configurado {rpg_channel_id} não encontrado.")
+                await interaction.response.send_message("⚠️ Canal RPG configurado não encontrado. Reconfigure com `/rpg canal`.", ephemeral=True)
+                return
+
         npc = self.npc_repo.get_random_npc()
         if not npc:
             await interaction.response.send_message(
@@ -114,7 +160,18 @@ class EventsCog(commands.Cog):
             )
         
         view = EncounterResponseView(self, interaction, npc)
-        await interaction.response.send_message(embed=embed, view=view)
+        
+        # 3. Envia para o canal alvo com segurança
+        try:
+            if target_channel.id != interaction.channel_id:
+                await target_channel.send(f"{interaction.user.mention} encontrou algo!", embed=embed, view=view)
+                await interaction.response.send_message(f"✅ Encontro iniciado em {target_channel.mention}!", ephemeral=True)
+            else:
+                await interaction.response.send_message(embed=embed, view=view)
+        except (discord.Forbidden, discord.NotFound) as e:
+            print(f"⚠️ [RPG] Erro ao enviar encontro: {e}")
+            if not interaction.response.is_done():
+                await interaction.response.send_message("❌ Erro ao acessar o canal do evento.", ephemeral=True)
     
     @events_group.command(name="listar", description="Lista todos os eventos disponíveis")
     async def list_events(self, interaction: discord.Interaction):

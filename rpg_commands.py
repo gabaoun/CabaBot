@@ -37,6 +37,149 @@ class RPGCog(commands.Cog):
     
     rpg_group = app_commands.Group(name="rpg", description="Comandos do RPG de Mesa")
     
+    # ==================== HELPERS ====================
+
+    def _get_rpg_channel_id(self, guild_id: int) -> Optional[int]:
+        """Retorna o ID do canal RPG configurado para a guild."""
+        try:
+            config = self.bot.get_guild_config(guild_id)
+            return config.get("rpg_channel_id")
+        except AttributeError:
+            return None
+
+    def _set_rpg_channel_id(self, guild_id: int, channel_id: int) -> None:
+        """Define o ID do canal RPG para a guild."""
+        try:
+            self.bot.set_guild_config(guild_id, "rpg_channel_id", channel_id)
+        except AttributeError:
+            pass
+
+    async def _safe_send(self, guild_id: int, content: str = None, embed: discord.Embed = None, view: discord.ui.View = None, interaction: discord.Interaction = None) -> bool:
+        """
+        Tenta enviar uma mensagem no canal RPG configurado.
+        Se falhar (canal deletado/sem permissão), loga no terminal.
+        
+        Se interaction for fornecida e o canal não estiver configurado, 
+        responde na interaction (fallback).
+        """
+        channel_id = self._get_rpg_channel_id(guild_id)
+        
+        # Se não tem canal configurado, usa a interaction se disponível
+        if not channel_id:
+            if interaction and not interaction.response.is_done():
+                await interaction.response.send_message(content=content, embed=embed, view=view or discord.utils.MISSING, ephemeral=True)
+                return True
+            return False
+
+        channel = self.bot.get_channel(channel_id)
+        
+        # Se canal não existe (foi deletado) ou bot não consegue ver
+        if not channel:
+            print(f"⚠️ [RPG] Erro: Canal RPG {channel_id} não encontrado na guild {guild_id}.")
+            if interaction and not interaction.response.is_done():
+                 await interaction.response.send_message("⚠️ O canal RPG configurado não foi encontrado. Por favor, reconfigure com `/rpg canal`.", ephemeral=True)
+            return False
+
+        try:
+            if isinstance(channel, (discord.TextChannel, discord.Thread)):
+                await channel.send(content=content, embed=embed, view=view or discord.utils.MISSING)
+                
+                # Se foi chamado via interaction, confirma visualmente que foi enviado lá
+                if interaction and not interaction.response.is_done():
+                    await interaction.response.send_message(f"✅ Enviado no canal {channel.mention}", ephemeral=True)
+                return True
+        except discord.Forbidden:
+            print(f"⚠️ [RPG] Erro: Permissão negada para enviar mensagem no canal {channel_id} (Guild {guild_id}).")
+        except Exception as e:
+            print(f"⚠️ [RPG] Erro ao enviar mensagem: {e}")
+            
+        return False
+
+    # ==================== CONFIGURAÇÃO ====================
+
+    @rpg_group.command(name="canal", description="Define o canal exclusivo para o RPG")
+    @app_commands.describe(canal="O canal de texto onde o RPG vai acontecer")
+    async def set_rpg_channel(self, interaction: discord.Interaction, canal: discord.TextChannel):
+        """Define o canal onde os eventos e mensagens do RPG serão enviados."""
+        if not interaction.user.guild_permissions.administrator:
+             await interaction.response.send_message("❌ Apenas administradores podem configurar o canal do RPG.", ephemeral=True)
+             return
+
+        self._set_rpg_channel_id(interaction.guild_id, canal.id)
+        await interaction.response.send_message(f"✅ Canal do RPG definido para {canal.mention}! Todas as aventuras acontecerão lá.", ephemeral=True)
+
+    # ==================== JOGAR (ENTRY POINT) ====================
+
+    @rpg_group.command(name="jogar", description="Começa sua jornada ou continua de onde parou")
+    async def play_rpg(self, interaction: discord.Interaction):
+        """Ponto de entrada principal para o RPG."""
+        character = self.character_repo.load_character(interaction.user.id)
+        
+        # Cenário 1: Sem personagem
+        if not character:
+            embed = discord.Embed(
+                title="🐉 Bem-vindo ao CabaRPG!",
+                description=(
+                    "Você ainda não tem um personagem. Para começar sua aventura, "
+                    "você precisa criar sua ficha.\n\n"
+                    "**Como começar:**\n"
+                    "1. Use `/rpg criar` escolhendo um nome e uma classe.\n"
+                    "2. Use `/rpg classes` para ver as opções.\n"
+                ),
+                color=discord.Color.gold()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        # Cenário 2: Personagem existe, verificar atributos
+        # Se a soma dos atributos for igual aos valores base (assumindo base 0 ou 10*5=50 muito baixo)
+        # Vamos assumir que se a soma for < 50 (média 10), ele ainda não alocou
+        total_stats = (
+            character.attributes.strength + 
+            character.attributes.dexterity + 
+            character.attributes.intelligence + 
+            character.attributes.wisdom + 
+            character.attributes.charisma
+        )
+        
+        # Se os atributos ainda estão muito baixos (padrão inicial pode ser 1 ou 10)
+        # O sistema Attributes.py define defaults como 10. 10*5 = 50.
+        # Se o jogador tiver exatamente 50 pontos, assumimos que ele não distribuiu ainda, 
+        # pois o sistema "balanceado" permite até 72.
+        if total_stats <= 55:
+            pontos_restantes = 72 - total_stats
+            embed = discord.Embed(
+                title=f"👋 Olá, {character.name}!",
+                description=(
+                    "Sua ficha foi criada, mas seus atributos parecem básicos.\n\n"
+                    "🎯 **Você tem pontos para alocar!**\n"
+                    "O sistema permite distribuir até **72 pontos** totais entre seus 5 atributos.\n"
+                    "Atualmente você tem: **50 pontos** (Padrão).\n\n"
+                    "**Use `/rpg atributos` para distribuir seus pontos.**\n"
+                    "Exemplo: `/rpg atributos forca:15 destreza:14 inteligencia:13 sabedoria:12 carisma:10`"
+                ),
+                color=discord.Color.blue()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        # Cenário 3: Tudo pronto
+        channel_id = self._get_rpg_channel_id(interaction.guild_id)
+        canal_msg = f"<#{channel_id}>" if channel_id else "neste canal"
+        
+        embed = discord.Embed(
+            title="⚔️ Hora da Aventura!",
+            description=(
+                f"Tudo pronto com **{character.name}** (Nível {character.level} {character.character_class.name}).\n\n"
+                f"🎲 **O que fazer?**\n"
+                f"- Espere por eventos em {canal_msg}\n"
+                f"- Use `/evento encontro` para buscar confusão\n"
+                f"- Use `/rpg perfil` para ver seus itens e ouro"
+            ),
+            color=discord.Color.green()
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
     # ==================== CRIAÇÃO DE PERSONAGEM ====================
     
     @rpg_group.command(name="criar", description="Cria um novo personagem RPG")
@@ -108,25 +251,21 @@ class RPGCog(commands.Cog):
         mods = character.get_modifiers()
         
         embed = discord.Embed(
-            title=f"📋 {character.name}",
+            title=f"📋 Ficha de {character.name}",
+            description=f"**{character.character_class.name}** | Nível {character.level}",
             color=discord.Color.blue()
         )
-        
-        # Info básica
-        embed.add_field(name="Classe", value=character.character_class.name, inline=True)
-        embed.add_field(name="Nível", value=str(character.level), inline=True)
-        embed.add_field(name="EXP", value=f"{character.experience} / {1000 * character.level}", inline=True)
         
         # Atributos
         attrs = character.attributes
         embed.add_field(
             name="📊 Atributos",
             value=(
-                f"**Força:** {attrs.strength} ({mods.strength_mod:+d})\n"
-                f"**Destreza:** {attrs.dexterity} ({mods.dexterity_mod:+d})\n"
-                f"**Inteligência:** {attrs.intelligence} ({mods.intelligence_mod:+d})\n"
-                f"**Sabedoria:** {attrs.wisdom} ({mods.wisdom_mod:+d})\n"
-                f"**Carisma:** {attrs.charisma} ({mods.charisma_mod:+d})"
+                f"**FOR:** {attrs.strength} ({mods.strength_mod:+d}) | "
+                f"**DES:** {attrs.dexterity} ({mods.dexterity_mod:+d}) | "
+                f"**INT:** {attrs.intelligence} ({mods.intelligence_mod:+d})\n"
+                f"**SAB:** {attrs.wisdom} ({mods.wisdom_mod:+d}) | "
+                f"**CAR:** {attrs.charisma} ({mods.charisma_mod:+d})"
             ),
             inline=False
         )
@@ -139,32 +278,56 @@ class RPGCog(commands.Cog):
         resource_bar = "🟦" * (resource_percent // 20) + "⬜" * (5 - (resource_percent // 20))
         
         embed.add_field(
-            name="❤️ Saúde",
-            value=f"{hp_bar} {character.current_hp}/{character.max_hp}",
-            inline=False
+            name=f"❤️ HP: {character.current_hp}/{character.max_hp}",
+            value=hp_bar,
+            inline=True
         )
         embed.add_field(
-            name="✨ Mana/Energia",
-            value=f"{resource_bar} {character.resource_points}/{character.max_resource_points}",
-            inline=False
+            name=f"✨ Mana: {character.resource_points}/{character.max_resource_points}",
+            value=resource_bar,
+            inline=True
         )
         
+        # Equipamentos
+        equipped_items = character.inventory.get_equipped_items()
+        equipped_text = "Nenhum"
+        if equipped_items:
+            equipped_text = "\n".join([f"**{eq.slot.value.capitalize()}:** {eq.name}" for eq in equipped_items])
+        
+        embed.add_field(name="🛡️ Equipamentos", value=equipped_text, inline=False)
+
+        # Inventário Resumido
+        inventory_items = list(character.inventory.items.values())
+        inv_text = "Vazio"
+        if inventory_items:
+            # Lista os primeiros 5 itens
+            item_list = [f"{item.quantity}x {item.name}" for item in inventory_items[:5]]
+            if len(inventory_items) > 5:
+                item_list.append(f"...e mais {len(inventory_items) - 5}")
+            inv_text = ", ".join(item_list)
+        
         embed.add_field(
-            name="💰 Ouro",
-            value=str(character.inventory.money),
+            name=f"🎒 Mochila ({len(inventory_items)}/{character.inventory.max_capacity})", 
+            value=inv_text, 
             inline=True
         )
         embed.add_field(
-            name="🎒 Itens",
-            value=str(len(character.inventory.items)),
+            name="💰 Ouro", 
+            value=f"{character.inventory.money} moedas", 
             inline=True
         )
+        
+        # XP Bar
+        next_level_xp = 1000 * character.level
+        xp_percent = int((character.experience / next_level_xp) * 100)
+        xp_bar_char = "🟨" * (xp_percent // 10) + "⬛" * (10 - (xp_percent // 10))
+        embed.add_field(name=f"⭐ XP: {character.experience}/{next_level_xp}", value=xp_bar_char, inline=False)
         
         await interaction.response.send_message(embed=embed)
     
     # ==================== ATRIBUTOS ====================
     
-    @rpg_group.command(name="atributos", description="Aloca pontos em atributos")
+    @rpg_group.command(name="atributos", description="Aloca pontos em atributos (Max total: 72)")
     @app_commands.describe(
         forca="Força (1-20)",
         destreza="Destreza (1-20)",
@@ -181,7 +344,7 @@ class RPGCog(commands.Cog):
         sabedoria: int,
         carisma: int
     ):
-        """Aloca pontos em atributos (máx 20 por atributo)."""
+        """Aloca pontos em atributos (máx 20 por atributo, soma max 72)."""
         
         character = self.character_repo.load_character(interaction.user.id)
         if not character:
@@ -191,7 +354,20 @@ class RPGCog(commands.Cog):
             )
             return
         
-        # Valida valores
+        # Valida soma total (Balanceamento)
+        total_points = forca + destreza + inteligencia + sabedoria + carisma
+        MAX_POINTS = 72
+        
+        if total_points > MAX_POINTS:
+            await interaction.response.send_message(
+                f"❌ **Muitos pontos!** A soma dos atributos deu **{total_points}**.\n"
+                f"O limite máximo para balanceamento é **{MAX_POINTS}** pontos.\n"
+                f"Tente reduzir alguns valores.",
+                ephemeral=True
+            )
+            return
+
+        # Valida valores individuais
         attrs = Attributes(
             strength=forca,
             dexterity=destreza,
@@ -209,22 +385,29 @@ class RPGCog(commands.Cog):
         
         # Atualiza e salva
         character.attributes = attrs
+        # Recalcula HP e recursos baseados nos novos atributos
+        character.max_hp = character.character_class.get_hit_points_per_level() * character.level + attrs.get_modifiers().strength_mod
+        character.current_hp = min(character.current_hp, character.max_hp) # Ajusta se o max diminuiu
+        character.max_resource_points = 10 + (attrs.intelligence * 2) + ((character.level - 1) * 5)
+        character.resource_points = min(character.resource_points, character.max_resource_points)
+
         self.character_repo.save_character(character)
         
         embed = discord.Embed(
             title="✅ Atributos Alocados!",
+            description=f"Total de pontos usados: **{total_points}/{MAX_POINTS}**",
             color=discord.Color.green()
         )
         
         mods = character.get_modifiers()
         embed.add_field(
-            name="Seus Atributos",
+            name="Seus Novos Atributos",
             value=(
-                f"**Força:** {attrs.strength} ({mods.strength_mod:+d})\n"
-                f"**Destreza:** {attrs.dexterity} ({mods.dexterity_mod:+d})\n"
-                f"**Inteligência:** {attrs.intelligence} ({mods.intelligence_mod:+d})\n"
-                f"**Sabedoria:** {attrs.wisdom} ({mods.wisdom_mod:+d})\n"
-                f"**Carisma:** {attrs.charisma} ({mods.charisma_mod:+d})"
+                f"**FOR:** {attrs.strength} ({mods.strength_mod:+d})\n"
+                f"**DES:** {attrs.dexterity} ({mods.dexterity_mod:+d})\n"
+                f"**INT:** {attrs.intelligence} ({mods.intelligence_mod:+d})\n"
+                f"**SAB:** {attrs.wisdom} ({mods.wisdom_mod:+d})\n"
+                f"**CAR:** {attrs.charisma} ({mods.charisma_mod:+d})"
             ),
             inline=False
         )
