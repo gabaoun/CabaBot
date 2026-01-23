@@ -20,9 +20,8 @@ Version: 1.2.0
 import random
 import discord
 import asyncio
-import math
 import os
-import yt_dlp
+import yt_dlp  # type: ignore[import-untyped]
 from discord import app_commands
 from dotenv import load_dotenv, find_dotenv
 from pathlib import Path
@@ -266,8 +265,8 @@ def _extract(query: str, ydl_opts: dict) -> dict:
     Returns:
         dict: Informações do vídeo (URL, título, duração, etc.)
     """
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        return ydl.extract_info(query, download=False)
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:  # type: ignore[arg-type]
+        return ydl.extract_info(query, download=False)  # type: ignore[return-value]
 
 
 def _get_stream_url(track: dict) -> Optional[str]:
@@ -345,17 +344,17 @@ async def _validate_guild_and_member(interaction: discord.Interaction) -> discor
 
 async def _get_or_connect_voice_client(
     guild: discord.Guild, 
-    voice_channel: discord.VoiceChannel
-) -> discord.VoiceClient | None:  # type: ignore[return-value]
+    voice_channel: discord.VoiceChannel | discord.StageChannel
+) -> discord.VoiceClient | discord.VoiceProtocol | None:
     """
     Obtém o cliente de voz atual ou conecta a um novo canal.
     
     Args:
         guild (discord.Guild): O servidor
-        voice_channel (discord.VoiceChannel): O canal de voz destino
+        voice_channel (discord.VoiceChannel | discord.StageChannel): O canal de voz destino
         
     Returns:
-        discord.VoiceClient | None: Cliente de voz conectado ou None se erro
+        discord.VoiceClient | discord.VoiceProtocol | None: Cliente de voz conectado ou None se erro
     """
     voice_client = guild.voice_client
     
@@ -416,6 +415,12 @@ async def _run_vote_for_action(
 
     # Mensagem pública de votação
     try:
+        if not isinstance(interaction.channel, (discord.TextChannel, discord.Thread)):
+            try:
+                await interaction.response.send_message("Não consegui iniciar a votação no canal.", ephemeral=True)
+            except Exception:
+                pass
+            return False
         vote_msg = await interaction.channel.send(
             f"🗳️ Votação para **{action_name}** iniciada por {interaction.user.mention}.\n"
             f"Reaja com ✅ para concordar. São necessários **{votes_needed}** votos de **{num_humans}** participantes em {timeout}s."
@@ -472,10 +477,11 @@ async def _run_vote_for_action(
 
     # informa resultado
     try:
-        if passed:
-            await interaction.channel.send(f"✅ Votação aprovada: {votes}/{num_humans} votos.")
-        else:
-            await interaction.channel.send(f"❌ Votação rejeitada: {votes}/{num_humans} votos.")
+        if isinstance(interaction.channel, (discord.TextChannel, discord.Thread)):
+            if passed:
+                await interaction.channel.send(f"✅ Votação aprovada: {votes}/{num_humans} votos.")
+            else:
+                await interaction.channel.send(f"❌ Votação rejeitada: {votes}/{num_humans} votos.")
     except Exception:
         pass
 
@@ -498,7 +504,7 @@ class MusicTrack:
         self.url = url
         self.title = title
         if isinstance(requester, int):
-            self.requester_id = requester
+            self.requester_id: int | None = requester
             self.requester = requester_name or str(requester)
         else:
             self.requester_id = None
@@ -613,7 +619,7 @@ async def musica(interaction: discord.Interaction, url: str):
 
     # Validações básicas de guild e membro
     member = await _validate_guild_and_member(interaction)
-    if member is None:
+    if member is None or interaction.guild is None:
         return
     
     # Verifica se o usuário está em um canal de voz
@@ -667,11 +673,17 @@ async def musica(interaction: discord.Interaction, url: str):
             await interaction.followup.send("Erro ao conectar ao canal de voz, tenta de novo aí.")
             return
 
-        if not voice_client.is_playing() and bot.music_queue[interaction.guild.id]:
+        if isinstance(voice_client, discord.VoiceClient) and not voice_client.is_playing() and bot.music_queue[interaction.guild.id]:
             next_track = bot.music_queue[interaction.guild.id].pop(0)
             bot.current_track[interaction.guild.id] = next_track
-            source = discord.FFmpegPCMAudio(next_track.url, executable=str(FFMPEG_PATH), **FFMPEG_OPTIONS)
-            voice_client.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(_play_next_track(interaction.guild), bot.loop))
+            source = discord.FFmpegPCMAudio(
+                next_track.url,
+                executable=str(FFMPEG_PATH),
+                before_options=FFMPEG_OPTIONS['before_options'],
+                options=FFMPEG_OPTIONS['options']
+            )
+            guild = interaction.guild
+            voice_client.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(_play_next_track(guild), bot.loop))
 
         await interaction.followup.send(f"📚 Playlist/mix adicionada à fila — {added} música(s) adicionadas.")
         return
@@ -694,22 +706,24 @@ async def musica(interaction: discord.Interaction, url: str):
         source = discord.FFmpegPCMAudio(
             audio_url,
             executable=str(FFMPEG_PATH),
-            **FFMPEG_OPTIONS
+            before_options=FFMPEG_OPTIONS['before_options'],
+            options=FFMPEG_OPTIONS['options']
         )
 
         # Cria a faixa de música
-        track = MusicTrack(audio_url, title, interaction.user.id, interaction.user.display_name)
+        track = MusicTrack(audio_url, title, interaction.user.id, interaction.user.display_name)  # type: ignore[assignment]
         
         # Inicializa a fila para este servidor se não existir
         if interaction.guild.id not in bot.music_queue:
             bot.music_queue[interaction.guild.id] = []
         
         # Se não há música tocando, toca direto e configura callback para próxima
-        if not voice_client.is_playing():
+        if isinstance(voice_client, discord.VoiceClient) and not voice_client.is_playing():
+            guild = interaction.guild
             def after_track(error):
                 if error:
                     print(f"Erro ao reproduzir: {error}")
-                asyncio.run_coroutine_threadsafe(_play_next_track(interaction.guild), bot.loop)
+                asyncio.run_coroutine_threadsafe(_play_next_track(guild), bot.loop)
             
             # Armazena a música atual
             bot.current_track[interaction.guild.id] = track
@@ -837,7 +851,8 @@ async def timer(interaction: discord.Interaction, segundos: int, url: str):
         source = discord.FFmpegPCMAudio(
             audio_url,
             executable=str(FFMPEG_PATH),
-            **FFMPEG_OPTIONS
+            before_options=FFMPEG_OPTIONS['before_options'],
+            options=FFMPEG_OPTIONS['options']
         )
 
         if isinstance(voice_client, discord.VoiceClient):
@@ -875,7 +890,7 @@ async def parar(interaction: discord.Interaction):
     
     # Obtém o cliente de voz atual
     voice_client = guild.voice_client  # type: ignore[assignment]
-    if voice_client is None or not voice_client.is_playing():  # type: ignore[attr-defined]
+    if voice_client is None or (isinstance(voice_client, discord.VoiceClient) and not voice_client.is_playing()):  # type: ignore[attr-defined]
         await interaction.response.send_message(
             "Nada tá tocando agora, visse?",
             ephemeral=True
@@ -883,7 +898,8 @@ async def parar(interaction: discord.Interaction):
         return
     
     # Para a reprodução
-    voice_client.stop()  # type: ignore[attr-defined]
+    if isinstance(voice_client, discord.VoiceClient):
+        voice_client.stop()  # type: ignore[attr-defined]
     
     # Limpa a fila para este servidor
     bot.music_queue[guild.id] = []
@@ -1230,7 +1246,7 @@ async def loop_track(interaction: discord.Interaction, enabled: Optional[bool] =
     
     # Valida se há música tocando
     voice_client = guild.voice_client
-    if voice_client is None or not voice_client.is_playing():
+    if voice_client is None or (isinstance(voice_client, discord.VoiceClient) and not voice_client.is_playing()):
         await interaction.response.send_message(
             "Nada tá tocando agora, visse?",
             ephemeral=True
@@ -1271,7 +1287,7 @@ async def loop_queue(interaction: discord.Interaction, enabled: Optional[bool] =
     
     # Valida se há música tocando
     voice_client = guild.voice_client
-    if voice_client is None or not voice_client.is_playing():
+    if voice_client is None or (isinstance(voice_client, discord.VoiceClient) and not voice_client.is_playing()):
         await interaction.response.send_message(
             "Nada tá tocando agora, visse?",
             ephemeral=True
@@ -1470,17 +1486,18 @@ class RollButton(discord.ui.Button):
         # Atualiza a mensagem do teste com o ranking
         try:
             channel = interaction.channel
-            message = await channel.fetch_message(self.test_message_id)
-            
-            # Cria novo embed com ranking atualizado
-            embed = message.embeds[0] if message.embeds else discord.Embed()
-            embed.set_field_at(
-                2,  # Campo do ranking (3º campo)
-                name="📊 Ranking",
-                value=self.test_config.get_ranking(),
-                inline=False
-            )
-            await message.edit(embed=embed)
+            if isinstance(channel, (discord.TextChannel, discord.Thread)):
+                message = await channel.fetch_message(self.test_message_id)
+                
+                # Cria novo embed com ranking atualizado
+                embed = message.embeds[0] if message.embeds else discord.Embed()
+                embed.set_field_at(
+                    2,  # Campo do ranking (3º campo)
+                    name="📊 Ranking",
+                    value=self.test_config.get_ranking(),
+                    inline=False
+                )
+                await message.edit(embed=embed)
         except Exception as e:
             print(f"Erro ao atualizar mensagem do teste: {e}")
 
@@ -1539,7 +1556,7 @@ async def rolar_dado(interaction: discord.Interaction, lados: int, quantidade: i
     # Valida a quantidade de dados
     if quantidade < 1 or quantidade > 100:
         await interaction.response.send_message(
-            f"❌ Quantidade inválida. Use entre 1 e 100 dados, visse?",
+            "❌ Quantidade inválida. Use entre 1 e 100 dados, visse?",
             ephemeral=True
         )
         return
