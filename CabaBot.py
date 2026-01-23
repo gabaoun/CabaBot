@@ -23,6 +23,7 @@ import asyncio
 import os
 import yt_dlp  # type: ignore[import-untyped]
 from discord import app_commands
+from discord.ext import commands
 from dotenv import load_dotenv, find_dotenv
 from pathlib import Path
 import json
@@ -132,12 +133,12 @@ TOKEN = _token_raw.strip().strip('"').strip("'")
 print(f"✅ TOKEN carregado com sucesso ({len(TOKEN)} caracteres)")
 
 
-class CabaBot(discord.Client):
+class CabaBot(commands.Bot):
     """
     Cliente Discord customizado com suporte a slash commands e gerenciamento de filas.
     
     Herança:
-        discord.Client: Cliente base do discord.py
+        commands.Bot: Cliente avançado do discord.py com suporte a Cogs
         
     Atributos:
         tree (app_commands.CommandTree): Árvore de comandos para slash commands
@@ -158,8 +159,10 @@ class CabaBot(discord.Client):
         # Necessário para ler o conteúdo das mensagens em certos contextos
         intents.message_content = True
         
-        super().__init__(intents=intents)
-        self.tree = app_commands.CommandTree(self)
+        # Inicializa commands.Bot (necessário para usar Cogs)
+        # command_prefix é obrigatório, mas não usamos comandos de texto antigos
+        super().__init__(command_prefix="!", intents=intents, help_command=None)
+        
         # Fila de músicas por guild - permite gerenciar múltiplos servidores
         self.music_queue = {}
         # Controle de loop por guild: {'guild_id': {'loop_track': bool, 'loop_queue': bool}}
@@ -196,9 +199,18 @@ class CabaBot(discord.Client):
         """
         Hook chamado antes do bot começar.
         
-        Sincroniza todos os slash commands registrados com a API do Discord.
-        Isso garante que os comandos apareçam no menu de slash commands.
+        Carrega extensões (Cogs) e sincroniza slash commands.
         """
+        # Carrega o Sistema RPG antes de sincronizar
+        try:
+            print("📊 Carregando sistema RPG...")
+            await load_rpg_commands(self)
+            self.rpg_loaded = True
+        except Exception as e:
+            print(f"⚠️  Erro ao carregar RPG: {e}")
+            self.rpg_loaded = False
+
+        # Sincroniza comandos
         await self.tree.sync()
         print("✅ Comandos sincronizados com sucesso!")
 
@@ -1907,7 +1919,7 @@ async def perfil(interaction: discord.Interaction, membro: discord.Member):
 # CARREGAMENTO DO SISTEMA RPG
 # ============================================================================
 
-async def load_rpg_commands():
+async def load_rpg_commands(bot_instance: commands.Bot):
     """Carrega os comandos RPG no bot."""
     from pathlib import Path
     from rpg_system import CharacterRepository, create_event_repository_with_defaults, create_npc_repository_with_defaults
@@ -1923,30 +1935,14 @@ async def load_rpg_commands():
     npc_repo = create_npc_repository_with_defaults()
     
     # Adiciona a Cog principal de RPG
-    rpg_cog = RPGCog(bot)  # type: ignore
-    await bot.add_cog(rpg_cog)  # type: ignore
+    rpg_cog = RPGCog(bot_instance)  # type: ignore
+    await bot_instance.add_cog(rpg_cog)  # type: ignore
     
     # Adiciona a Cog de eventos com os repositórios compartilhados
-    events_cog = EventsCog(bot, character_repo, event_repo, npc_repo)  # type: ignore
-    await bot.add_cog(events_cog)  # type: ignore
+    events_cog = EventsCog(bot_instance, character_repo, event_repo, npc_repo)  # type: ignore
+    await bot_instance.add_cog(events_cog)  # type: ignore
     
     print("✅ Sistema RPG carregado com sucesso!")
-
-
-@bot.event
-async def on_ready():
-    """Evento disparado quando o bot está pronto."""
-    print(f"\n✅ Bot {bot.user} conectado!")
-    print("📊 Sincronizando commands...")
-    
-    # Se ainda não carregou o RPG, carrega agora
-    if not bot.rpg_loaded:
-        try:
-            await load_rpg_commands()
-            bot.rpg_loaded = True
-        except Exception as e:
-            print(f"⚠️  Erro ao carregar RPG: {e}")
-            bot.rpg_loaded = False
 
 
 if __name__ == "__main__":

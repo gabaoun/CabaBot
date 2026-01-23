@@ -39,7 +39,7 @@ class Character:
         
         # Calcula HP
         self.max_hp = self.character_class.get_hit_points_per_level() + \
-                      self.attributes.get_modifiers().strength_mod
+                      self.attributes.get_modifiers().constitution_mod
         self.current_hp = self.max_hp
         
         # Recurso de classe (mana, energia, etc)

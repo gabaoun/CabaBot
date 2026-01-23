@@ -101,10 +101,6 @@ class RPGCog(commands.Cog):
     @app_commands.describe(canal="O canal de texto onde o RPG vai acontecer")
     async def set_rpg_channel(self, interaction: discord.Interaction, canal: discord.TextChannel):
         """Define o canal onde os eventos e mensagens do RPG serão enviados."""
-        if not interaction.user.guild_permissions.administrator:
-             await interaction.response.send_message("❌ Apenas administradores podem configurar o canal do RPG.", ephemeral=True)
-             return
-
         self._set_rpg_channel_id(interaction.guild_id, canal.id)
         await interaction.response.send_message(f"✅ Canal do RPG definido para {canal.mention}! Todas as aventuras acontecerão lá.", ephemeral=True)
 

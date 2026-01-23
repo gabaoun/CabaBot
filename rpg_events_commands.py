@@ -5,7 +5,7 @@ Comandos para disparar eventos e encontros.
 """
 
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord import app_commands
 import random
 import asyncio
@@ -26,6 +26,85 @@ class EventsCog(commands.Cog):
         self.event_repo = event_repo
         self.npc_repo = npc_repo
         self.active_events: dict = {}
+        
+    async def cog_load(self):
+        """Chamado quando a Cog é carregada."""
+        self.random_event_loop.start()
+
+    async def cog_unload(self):
+        """Chamado quando a Cog é descarregada."""
+        self.random_event_loop.cancel()
+
+    @tasks.loop(minutes=1)
+    async def random_event_loop(self):
+        """Loop que tenta disparar eventos aleatórios a cada minuto."""
+        # Chance de evento: intervalo de 2-4 minutos significa aprox 25-50% chance por minuto
+        # Vamos usar 33% de chance por minuto para média de 3 min
+        if random.random() > 0.33:
+            return
+
+        for guild in self.bot.guilds:
+            try:
+                # Verifica se tem canal RPG configurado
+                config = self.bot.get_guild_config(guild.id)
+                rpg_channel_id = config.get("rpg_channel_id")
+                
+                if not rpg_channel_id:
+                    continue
+                    
+                channel = self.bot.get_channel(rpg_channel_id)
+                if not channel:
+                    continue
+
+                # Escolhe tipo de evento (50% evento, 50% NPC)
+                if random.choice([True, False]):
+                    # Evento aleatório
+                    event = self.event_repo.get_random_event()
+                    if not event: continue
+                    
+                    embed = discord.Embed(
+                        title=f"⚡ Evento Aleatório: {event.name}",
+                        description=event.description,
+                        color=discord.Color.red()
+                    )
+                    embed.add_field(name="Dificuldade", value="⭐" * event.difficulty)
+                    embed.add_field(
+                        name="Recompensa",
+                        value=f"EXP: {event.min_exp_reward}-{event.max_exp_reward}\n"
+                              f"Ouro: {event.min_gold_reward}-{event.max_gold_reward}",
+                        inline=False
+                    )
+                    # Adiciona checks se houver
+                    if event.required_checks:
+                         checks_str = ", ".join([f"{k.capitalize()}: {v}" for k, v in event.required_checks.items()])
+                         embed.add_field(name="Testes Necessários", value=checks_str, inline=False)
+
+                    view = EventResponseView(self, None, event) # interaction é None aqui
+                    await channel.send(f"@everyone 🎲 Algo está acontecendo!", embed=embed, view=view)
+                
+                else:
+                    # Encontro NPC
+                    npc = self.npc_repo.get_random_npc()
+                    if not npc: continue
+                    
+                    embed = discord.Embed(
+                        title=f"👹 Encontro Aleatório: {npc.name}",
+                        description=npc.description,
+                        color=discord.Color.orange()
+                    )
+                    embed.add_field(name="Título", value=npc.title)
+                    embed.add_field(name="Nível", value=str(npc.level))
+                    embed.add_field(name="Classe", value=npc.npc_class.name if npc.npc_class else "Desconhecida")
+                    
+                    view = EncounterResponseView(self, None, npc) # interaction é None aqui
+                    await channel.send(f"@everyone 👀 Um vulto se aproxima...", embed=embed, view=view)
+                    
+            except Exception as e:
+                print(f"Erro no loop de eventos para guild {guild.name}: {e}")
+
+    @random_event_loop.before_loop
+    async def before_random_event_loop(self):
+        await self.bot.wait_until_ready()
     
     events_group = app_commands.Group(name="evento", description="Comandos de eventos RPG")
     
@@ -294,7 +373,7 @@ class EventResponseView(discord.ui.View):
 class EncounterResponseView(discord.ui.View):
     """View para responder a um encontro com NPC."""
     
-    def __init__(self, cog: EventsCog, interaction: discord.Interaction, npc: NPC):
+    def __init__(self, cog: EventsCog, interaction: Optional[discord.Interaction], npc: NPC):
         super().__init__(timeout=300)
         self.cog = cog
         self.interaction = interaction

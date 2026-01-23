@@ -11,10 +11,11 @@ from dataclasses import dataclass, field
 
 @dataclass
 class Attributes:
-    """Representa os 5 atributos principais de um personagem RPG."""
+    """Representa os 6 atributos principais de um personagem RPG."""
     
     strength: int = 10  # Força - Ataca fisicamente
     dexterity: int = 10  # Destreza - Esquiva e precisão
+    constitution: int = 10 # Constituição - HP e resistência física
     intelligence: int = 10  # Inteligência - Magia e conhecimento
     wisdom: int = 10  # Sabedoria - Percepção e resistência mágica
     charisma: int = 10  # Carisma - Persuasão e liderança
@@ -24,8 +25,8 @@ class Attributes:
     
     def validate(self) -> bool:
         """Verifica se todos os atributos estão dentro dos limites válidos."""
-        for value in [self.strength, self.dexterity, self.intelligence, 
-                      self.wisdom, self.charisma]:
+        for value in [self.strength, self.dexterity, self.constitution, 
+                      self.intelligence, self.wisdom, self.charisma]:
             if value < self.MIN_VALUE or value > self.MAX_VALUE:
                 return False
         return True
@@ -35,6 +36,7 @@ class Attributes:
         return AttributeModifiers(
             strength_mod=self._calculate_modifier(self.strength),
             dexterity_mod=self._calculate_modifier(self.dexterity),
+            constitution_mod=self._calculate_modifier(self.constitution),
             intelligence_mod=self._calculate_modifier(self.intelligence),
             wisdom_mod=self._calculate_modifier(self.wisdom),
             charisma_mod=self._calculate_modifier(self.charisma),
@@ -50,6 +52,7 @@ class Attributes:
         return {
             "strength": self.strength,
             "dexterity": self.dexterity,
+            "constitution": self.constitution,
             "intelligence": self.intelligence,
             "wisdom": self.wisdom,
             "charisma": self.charisma,
@@ -61,6 +64,7 @@ class Attributes:
         return cls(
             strength=data.get("strength", 10),
             dexterity=data.get("dexterity", 10),
+            constitution=data.get("constitution", 10),
             intelligence=data.get("intelligence", 10),
             wisdom=data.get("wisdom", 10),
             charisma=data.get("charisma", 10),
@@ -69,8 +73,8 @@ class Attributes:
     @classmethod
     def default_distribution(cls) -> "Attributes":
         """Distribui 27 pontos (padrão D&D 4d6 drop)."""
-        return cls(strength=15, dexterity=14, intelligence=13, 
-                   wisdom=12, charisma=10)
+        return cls(strength=15, dexterity=14, constitution=13, intelligence=12, 
+                   wisdom=10, charisma=8)
 
 
 @dataclass
@@ -79,6 +83,7 @@ class AttributeModifiers:
     
     strength_mod: int = 0
     dexterity_mod: int = 0
+    constitution_mod: int = 0
     intelligence_mod: int = 0
     wisdom_mod: int = 0
     charisma_mod: int = 0
@@ -95,6 +100,10 @@ class AttributeModifiers:
         """Bônus para Classe de Armadura."""
         return self.dexterity_mod
     
+    def get_hp_bonus(self) -> int:
+        """Bônus para Pontos de Vida (Constituição)."""
+        return self.constitution_mod
+
     def get_spell_bonus(self) -> int:
         """Bônus para magias (inteligência)."""
         return self.intelligence_mod
@@ -112,6 +121,7 @@ class AttributeModifiers:
         return {
             "strength_mod": self.strength_mod,
             "dexterity_mod": self.dexterity_mod,
+            "constitution_mod": self.constitution_mod,
             "intelligence_mod": self.intelligence_mod,
             "wisdom_mod": self.wisdom_mod,
             "charisma_mod": self.charisma_mod,

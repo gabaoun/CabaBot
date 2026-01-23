@@ -20,6 +20,8 @@ class EventType(Enum):
     TREASURE = "tesouro"
     TRAP = "armadilha"
     SOCIAL = "social"
+    DUNGEON = "masmorra"
+    AMBUSH = "emboscada"
 
 
 @dataclass
@@ -99,13 +101,13 @@ DEFAULT_EVENTS = [
         event_id="goblin_ambush",
         name="Emboscada de Goblins",
         description="Um grupo de goblins primitivos sai da floresta!",
-        event_type=EventType.COMBAT,
+        event_type=EventType.AMBUSH,
         difficulty=1,
         min_exp_reward=50,
         max_exp_reward=100,
         min_gold_reward=5,
         max_gold_reward=20,
-        required_checks={"strength": 8},
+        required_checks={"dexterity": 8, "constitution": 8},
     ),
     Event(
         event_id="dragon_encounter",
@@ -146,13 +148,13 @@ DEFAULT_EVENTS = [
         event_id="cursed_temple",
         name="Templo Amaldiçoado",
         description="Você entra em um templo antigo cheio de armadilhas...",
-        event_type=EventType.TRAP,
+        event_type=EventType.DUNGEON,
         difficulty=4,
         min_exp_reward=200,
         max_exp_reward=400,
         min_gold_reward=50,
         max_gold_reward=150,
-        required_checks={"dexterity": 13, "wisdom": 11},
+        required_checks={"dexterity": 13, "wisdom": 11, "constitution": 12},
     ),
     Event(
         event_id="bandit_negotiation",
@@ -223,19 +225,43 @@ DEFAULT_EVENTS = [
         max_exp_reward=800,
         min_gold_reward=150,
         max_gold_reward=400,
-        required_checks={"strength": 14, "wisdom": 12},
+        required_checks={"strength": 14, "wisdom": 12, "constitution": 14},
     ),
     Event(
         event_id="lost_city",
         name="Cidade Perdida",
         description="Você descobre os ruins de uma cidade esquecida...",
-        event_type=EventType.PUZZLE,
+        event_type=EventType.DUNGEON,
         difficulty=4,
         min_exp_reward=250,
         max_exp_reward=450,
         min_gold_reward=100,
         max_gold_reward=300,
-        required_checks={"intelligence": 14},
+        required_checks={"intelligence": 14, "constitution": 12},
+    ),
+    Event(
+        event_id="dark_alley_ambush",
+        name="Emboscada no Beco Escuro",
+        description="Ladinos saltam das sombras em um beco estreito!",
+        event_type=EventType.AMBUSH,
+        difficulty=2,
+        min_exp_reward=80,
+        max_exp_reward=150,
+        min_gold_reward=20,
+        max_gold_reward=50,
+        required_checks={"dexterity": 12, "constitution": 10},
+    ),
+    Event(
+        event_id="crypt_dungeon",
+        name="Cripta Esquecida",
+        description="Você explora uma cripta antiga cheia de mortos-vivos...",
+        event_type=EventType.DUNGEON,
+        difficulty=3,
+        min_exp_reward=180,
+        max_exp_reward=300,
+        min_gold_reward=60,
+        max_gold_reward=120,
+        required_checks={"strength": 12, "constitution": 12},
     ),
 ]
 
