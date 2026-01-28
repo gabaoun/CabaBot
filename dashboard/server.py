@@ -52,8 +52,11 @@ class WebServer:
     async def handle_control(self, request):
         """Recebe comandos da interface web (pause, skip, stop)."""
         action = request.match_info['action']
-        data = await request.json()
-        guild_id = int(data.get('guild_id'))
+        try:
+            data = await request.json()
+            guild_id = int(data.get('guild_id'))
+        except (ValueError, TypeError):
+            return web.Response(status=400, text="Invalid Guild ID")
         
         guild = self.bot.get_guild(guild_id)
         if not guild:

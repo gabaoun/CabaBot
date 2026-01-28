@@ -35,8 +35,17 @@ load_dotenv(find_dotenv())
 
 # Define o caminho base do script e a localização do ffmpeg local
 SCRIPT_DIR = Path(__file__).parent
-FFMPEG_PATH = SCRIPT_DIR / "bin" / "ffmpeg" / "ffmpeg.exe"
-print(f"FFMPEG path: {FFMPEG_PATH} exists={FFMPEG_PATH.exists()}")
+LOCAL_FFMPEG = SCRIPT_DIR / "bin" / "ffmpeg" / "ffmpeg.exe"
+
+# Lógica de seleção do FFmpeg:
+# 1. Tenta usar o executável local (Windows dev)
+# 2. Se não existir, assume que está no PATH do sistema (Linux/Docker)
+if LOCAL_FFMPEG.exists():
+    FFMPEG_PATH = str(LOCAL_FFMPEG)
+    print(f"✅ Usando FFmpeg local: {FFMPEG_PATH}")
+else:
+    FFMPEG_PATH = "ffmpeg"
+    print("✅ Usando FFmpeg do sistema (PATH)")
 
 # Configuração do Spotify
 spotify_client = None
@@ -61,11 +70,19 @@ STARTUP_AUDIO_URL = random.choice(["https://www.youtube.com/watch?v=YeJj7v3f-vA"
 CONFIG_PATH = SCRIPT_DIR / "config.json"
 
 # Configurações reutilizáveis para yt-dlp (evita duplicação de código)
+# 'client': 'android' ajuda a evitar erros 403 Forbidden do YouTube
 YTDLP_OPTIONS = {
     'format': 'bestaudio[ext=m4a]/bestaudio/best',
     'noplaylist': True,
     'nocheckcertificate': True,
     'cachedir': False,
+    'quiet': True,
+    'no_warnings': True,
+    'default_search': 'auto',
+    'source_address': '0.0.0.0', # Bind to ipv4 since ipv6 addresses cause issues sometimes
+    'http_headers': {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
 }
 
 # Configurações reutilizáveis para FFmpeg
