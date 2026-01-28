@@ -13,6 +13,7 @@ Este projeto foi criado para aplicar conceitos avançados de programação, gere
 *   **Assincronismo:** `asyncio` (Para não bloquear a execução durante downloads/streams)
 *   **Áudio:** `FFmpeg` & `yt-dlp` (Processamento de stream e extração de metadados)
 *   **UI/UX:** `discord.ui` (Botões interativos para controle de playback)
+*   **DevOps:** `Docker` & `Docker Compose` (Containerização e deploy simplificado)
 *   **Boas Práticas:** Tipagem estática (`mypy`), Tratamento de erros robusto, Variáveis de ambiente (`.env`).
 
 ## ✨ O Que o Bot Faz?
@@ -24,9 +25,22 @@ O CabaBot gerencia uma experiência de áudio completa em servidores do Discord:
 3.  **Gerenciamento de Fila:** Sistema de playlist por servidor (cada servidor tem sua própria fila isolada).
 4.  **Timers Assíncronos:** Utilitário para definir lembretes que tocam um som específico ao finalizar.
 
-## 🚀 Como Executar (Localmente)
+## 🚀 Como Executar
 
-Se desejar testar o código em sua máquina:
+### Opção 1: Docker (Recomendado)
+A maneira mais fácil e limpa de rodar, sem instalar nada na sua máquina além do Docker.
+
+1.  **Crie o arquivo .env** com seu token:
+    ```env
+    TOKEN=seu_token_aqui
+    ```
+2.  **Suba o container**:
+    ```bash
+    docker-compose up -d
+    ```
+
+### Opção 2: Python Local
+Se desejar testar o código diretamente:
 
 1.  **Clone o repositório**
     ```bash

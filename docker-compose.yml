@@ -1,0 +1,16 @@
+services:
+  cababot:
+    build: .
+    container_name: cababot_container
+    restart: unless-stopped
+    # Carrega variáveis de ambiente do arquivo .env
+    env_file:
+      - .env
+    # Mapeia volumes para persistência (opcional, bom para logs/config)
+    volumes:
+      - .:/app
+    # Limita recursos (boa prática)
+    deploy:
+      resources:
+        limits:
+          memory: 512M
