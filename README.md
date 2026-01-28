@@ -12,6 +12,7 @@ Este projeto foi criado para aplicar conceitos avançados de programação, gere
 *   **Framework:** `discord.py` (Interação com API do Discord)
 *   **Assincronismo:** `asyncio` (Para não bloquear a execução durante downloads/streams)
 *   **Áudio:** `FFmpeg` & `yt-dlp` (Processamento de stream e extração de metadados)
+*   **Integrações:** `Spotify API` (Conversão automática de links Spotify para YouTube)
 *   **UI/UX:** `discord.ui` (Botões interativos para controle de playback)
 *   **DevOps:** `Docker` & `Docker Compose` (Containerização e deploy simplificado)
 *   **Boas Práticas:** Tipagem estática (`mypy`), Tratamento de erros robusto, Variáveis de ambiente (`.env`).
@@ -48,18 +49,23 @@ Se desejar testar o código diretamente:
     cd CabaBot
     ```
 
-2.  **Instale as dependências**
+1.  **Instale as dependências**
     ```bash
     pip install -r requirements.txt
     ```
 
-3.  **Configuração**
-    Crie um arquivo `.env` na raiz com seu token:
+2.  **Configuração**
+    Crie um arquivo `.env` na raiz:
     ```env
     TOKEN=seu_token_discord_aqui
+    
+    # Opcional: Para suporte a links do Spotify
+    SPOTIPY_CLIENT_ID=seu_client_id
+    SPOTIPY_CLIENT_SECRET=seu_client_secret
     ```
+    *(Consiga as chaves em: developer.spotify.com/dashboard)*
 
-4.  **Inicie**
+3.  **Inicie**
     ```bash
     python CabaBot.py
     ```

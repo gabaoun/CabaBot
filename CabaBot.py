@@ -20,6 +20,8 @@ import discord
 import asyncio
 import os
 import yt_dlp  # type: ignore[import-untyped]
+import spotipy  # type: ignore[import-untyped]
+from spotipy.oauth2 import SpotifyClientCredentials  # type: ignore[import-untyped]
 from discord import app_commands
 from dotenv import load_dotenv, find_dotenv
 from pathlib import Path
@@ -34,6 +36,22 @@ load_dotenv(find_dotenv())
 SCRIPT_DIR = Path(__file__).parent
 FFMPEG_PATH = SCRIPT_DIR / "bin" / "ffmpeg" / "ffmpeg.exe"
 print(f"FFMPEG path: {FFMPEG_PATH} exists={FFMPEG_PATH.exists()}")
+
+# Configuração do Spotify
+spotify_client = None
+try:
+    if os.getenv("SPOTIPY_CLIENT_ID") and os.getenv("SPOTIPY_CLIENT_SECRET"):
+        spotify_client = spotipy.Spotify(
+            auth_manager=SpotifyClientCredentials(
+                client_id=os.getenv("SPOTIPY_CLIENT_ID"),
+                client_secret=os.getenv("SPOTIPY_CLIENT_SECRET")
+            )
+        )
+        print("✅ Cliente Spotify configurado com sucesso")
+    else:
+        print("⚠️ Credenciais do Spotify não encontradas. Funcionalidade limitada.")
+except Exception as e:
+    print(f"⚠️ Erro ao configurar Spotify: {e}")
 
 # Áudio a ser reproduzido quando o bot ficar online (padrão: vídeo do YouTube)
 STARTUP_AUDIO_URL = random.choice(["https://www.youtube.com/watch?v=YeJj7v3f-vA", "https://www.youtube.com/watch?v=6xoJCJYLzZw", "https://www.youtube.com/watch?v=biZlbJAdyTE", "https://www.youtube.com/watch?v=sR9KWAIFSfc", "https://www.youtube.com/watch?v=xmf99leO-Z0", "https://www.youtube.com/watch?v=8zslY2eYJ9M"])
@@ -685,25 +703,41 @@ async def startup_audio(interaction: discord.Interaction, enabled: bool):
 
 
 
-@bot.tree.command(name="musica", description="Toca uma música no canal de voz")
-@app_commands.describe(url="URL do YouTube ou nome da música para tocar")
-async def musica(interaction: discord.Interaction, url: str):
+def _get_spotify_track_info(url: str) -> Optional[str]:
     """
-    Comando para reproduzir uma música do YouTube no canal de voz.
-    
-    O bot busca a música no YouTube (se um nome for informado) e reproduz
-    através do FFmpeg no canal de voz do usuário.
+    Tenta extrair informações (Artista - Título) de uma URL do Spotify.
     
     Args:
-        interaction (discord.Interaction): A interação do slash command
-        url (str): URL do YouTube ou nome da música a buscar
-        
-    Processo:
-        1. Valida se o usuário está em um canal de voz
-        2. Conecta ou alterna para o canal do usuário
-        3. Busca a música no YouTube
-        4. Extrai a melhor qualidade de áudio disponível
-        5. Reproduz usando FFmpeg
+        url (str): URL da faixa no Spotify
+    
+    Returns:
+        Optional[str]: 'Artista - Título' ou None se falhar
+    """
+    if not spotify_client:
+        return None
+
+    try:
+        # Suporta apenas faixas individuais por enquanto
+        if "track" in url:
+            track = spotify_client.track(url)
+            artist = track['artists'][0]['name']
+            name = track['name']
+            return f"{artist} - {name}"
+    except Exception as e:
+        print(f"Erro ao buscar no Spotify: {e}")
+        return None
+    return None
+
+@bot.tree.command(name="musica", description="Toca uma música do YouTube ou Spotify")
+@app_commands.describe(url="URL (YouTube/Spotify) ou nome da música")
+async def musica(interaction: discord.Interaction, url: str):
+    """
+    Comando para reproduzir uma música.
+    
+    Suporta:
+    - Busca por nome (YouTube)
+    - URL do YouTube (Vídeo ou Playlist)
+    - URL do Spotify (Faixa única -> busca automática no YouTube)
     """
     await interaction.response.defer()
 
@@ -728,11 +762,28 @@ async def musica(interaction: discord.Interaction, url: str):
         await interaction.followup.send("Erro ao conectar ao canal de voz, tenta de novo aí.")
         return
 
-    # Se não for URL, adiciona prefixo de busca para YouTube Search
-    query = 'ytsearch:' + url if not url.startswith("http") else url
-    # Decide se deve permitir playlists/mixes (URLs com list= ou playlist)
+    # Lógica de Busca
+    query = url
     allow_playlist = False
-    if url.startswith("http") and ("list=" in url or "playlist" in url):
+
+    # 1. Tratamento Spotify
+    if "open.spotify.com" in url:
+        if not spotify_client:
+            await interaction.followup.send("⚠️ Suporte a Spotify não configurado neste bot (falta credenciais). Tente usar link do YouTube.")
+            return
+        
+        spotify_query = _get_spotify_track_info(url)
+        if spotify_query:
+            query = f'ytsearch:{spotify_query}'
+            await interaction.followup.send(f"🔎 Link Spotify detectado: Buscando **'{spotify_query}'** no YouTube...")
+        else:
+            await interaction.followup.send("❌ Não consegui ler esse link do Spotify. Tente outro.")
+            return
+
+    # 2. Tratamento YouTube (URL ou Busca)
+    elif not url.startswith("http"):
+        query = 'ytsearch:' + url
+    elif "list=" in url or "playlist" in url:
         allow_playlist = True
 
     # Busca tracks (pode retornar múltiplas entradas se for playlist)
