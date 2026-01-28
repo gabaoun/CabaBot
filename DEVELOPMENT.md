@@ -1,38 +1,29 @@
-# 👨‍💻 Guia de Desenvolvimento
+# ⚙️ Notas de Engenharia
 
-## Estrutura do Projeto
+Este documento detalha algumas decisões técnicas tomadas durante o desenvolvimento para garantir performance e manutenibilidade.
 
-### `CabaBot` (Classe Principal)
+## 1. Arquitetura Assíncrona (Asyncio)
 
-**Responsabilidade:** Gerenciar conexão com Discord e comandos Slash.
+Um desafio comum em bots de música é o bloqueio da execução durante o download de metadados ou conexão de rede.
 
-**Componentes Principais:**
-- `music_queue`: Gerencia filas de reprodução por servidor
-- `current_track`: Rastreia o que está tocando
-- `loop_control`: Gerencia loops de faixa e fila
+*   **Solução:** Implementação estrita de `async/await`.
+*   **Destaque:** A busca no YouTube (`yt-dlp`) é uma operação bloqueante (I/O intensivo). Para resolver isso, utilizei `loop.run_in_executor` para rodar a extração em uma thread separada, mantendo o loop de eventos do Discord livre para processar outros comandos instantaneamente.
 
-### Sistema de Áudio
+## 2. Gerenciamento de Estado (State Management)
 
-O bot utiliza `yt-dlp` para extrair URLs de stream direto do YouTube e `ffmpeg` para processar e transmitir o áudio para o Discord.
+O bot precisa funcionar em múltiplos servidores (guilds) simultaneamente sem cruzar dados.
 
-**Fluxo de Reprodução:**
-1. Usuário solicita `/musica`
-2. `search_ytdlp_async` busca metadados em thread separada
-3. `_get_stream_url` seleciona a melhor URL de áudio
-4. `MusicTrack` é criado e adicionado à fila
-5. `_play_next_track` processa a fila e inicia o `FFmpegPCMAudio`
+*   **Estrutura:** Utilização de dicionários com o ID do servidor como chave.
+    ```python
+    self.music_queue = {}   # {guild_id: [Track1, Track2...]}
+    self.current_track = {} # {guild_id: TrackAtual}
+    ```
+*   **Resultado:** Isolamento total. O que acontece no Servidor A não afeta a fila do Servidor B.
 
----
+## 3. Qualidade de Código
 
-## Performance e Escalabilidade
-
-- **Asyncio**: Todas as operações de rede (YouTube, Discord API) são assíncronas.
-- **Filas Isoladas**: Cada servidor (guild) tem sua própria fila e estado de player.
-
-## Debugging
-
-Logs são impressos no console padrão. Verifique a saída do terminal para erros de FFmpeg ou exceções de conexão.
+*   **Type Hinting:** Uso de tipagem estática (ex: `def funcao(arg: int) -> None:`) para facilitar a leitura e uso de ferramentas como `mypy`.
+*   **Tratamento de Erros:** Blocos `try/except` estratégicos para garantir que o bot não caia (crash) se o YouTube rejeitar uma conexão ou se o usuário fizer algo inesperado. O bot sempre informa o erro de forma amigável.
 
 ---
-
-**Boa sorte desenvolvendo! 🚀**
+*Este arquivo visa demonstrar o pensamento técnico por trás do código.*
