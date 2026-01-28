@@ -12,6 +12,7 @@ Este projeto foi criado para aplicar conceitos avançados de programação, gere
 *   **Framework:** `discord.py` (Interação com API do Discord)
 *   **Assincronismo:** `asyncio` (Para não bloquear a execução durante downloads/streams)
 *   **Áudio:** `FFmpeg` & `yt-dlp` (Processamento de stream e extração de metadados)
+*   **UI/UX:** `discord.ui` (Botões interativos para controle de playback)
 *   **Boas Práticas:** Tipagem estática (`mypy`), Tratamento de erros robusto, Variáveis de ambiente (`.env`).
 
 ## ✨ O Que o Bot Faz?
@@ -19,8 +20,8 @@ Este projeto foi criado para aplicar conceitos avançados de programação, gere
 O CabaBot gerencia uma experiência de áudio completa em servidores do Discord:
 
 1.  **Streaming de Áudio:** Busca e toca músicas do YouTube com qualidade adaptativa.
-2.  **Gerenciamento de Fila:** Sistema de playlist por servidor (cada servidor tem sua própria fila isolada).
-3.  **Controle em Tempo Real:** Comandos para pausar, pular, retomar e loops.
+2.  **Interface Interativa:** Controle total (Pausar, Pular, Parar, Loop) através de botões reais, sem necessidade de digitar comandos repetidamente.
+3.  **Gerenciamento de Fila:** Sistema de playlist por servidor (cada servidor tem sua própria fila isolada).
 4.  **Timers Assíncronos:** Utilitário para definir lembretes que tocam um som específico ao finalizar.
 
 ## 🚀 Como Executar (Localmente)

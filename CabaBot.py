@@ -489,7 +489,7 @@ async def _run_vote_for_action(
 class MusicTrack:
     """Representa uma faixa de música na fila."""
 
-    def __init__(self, url: str, title: str, requester, requester_name: Optional[str] = None):
+    def __init__(self, url: str, title: str, requester, channel_id: int, requester_name: Optional[str] = None):
         """
         Inicializa uma faixa de música.
 
@@ -497,10 +497,12 @@ class MusicTrack:
             url (str): URL do áudio
             title (str): Título da música
             requester (int|str): ID do usuário que requisitou ou nome
+            channel_id (int): ID do canal de texto onde a música foi pedida (para enviar o player)
             requester_name (str | None): Nome do usuário (se requester for id)
         """
         self.url = url
         self.title = title
+        self.channel_id = channel_id
         if isinstance(requester, int):
             self.requester_id: int | None = requester
             self.requester = requester_name or str(requester)
@@ -509,9 +511,81 @@ class MusicTrack:
             self.requester = str(requester)
 
 
+class MusicPlayerView(discord.ui.View):
+    """View que contém os controles de reprodução de música (Botões)."""
+    
+    def __init__(self, guild_id: int):
+        super().__init__(timeout=None) # Botões não expiram
+        self.guild_id = guild_id
+
+    @discord.ui.button(emoji="⏯️", style=discord.ButtonStyle.secondary, custom_id="player_pause_resume")
+    async def pause_resume(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Pausa ou retoma a música."""
+        vc = interaction.guild.voice_client
+        if not vc:
+            await interaction.response.send_message("Não estou conectado.", ephemeral=True)
+            return
+
+        if vc.is_playing():
+            vc.pause()
+            await interaction.response.send_message("⏸️ Pausado!", ephemeral=True)
+        elif vc.is_paused():
+            vc.resume()
+            await interaction.response.send_message("▶️ Retomado!", ephemeral=True)
+        else:
+            await interaction.response.send_message("Nada tocando no momento.", ephemeral=True)
+
+    @discord.ui.button(emoji="⏭️", style=discord.ButtonStyle.secondary, custom_id="player_skip")
+    async def skip(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Pula para a próxima música."""
+        vc = interaction.guild.voice_client
+        if not vc or (not vc.is_playing() and not vc.is_paused()):
+            await interaction.response.send_message("Nada tocando para pular.", ephemeral=True)
+            return
+        
+        await interaction.response.send_message("⏭️ Pulando...", ephemeral=True)
+        vc.stop() # Isso dispara o callback 'after' que toca a próxima
+
+    @discord.ui.button(emoji="⏹️", style=discord.ButtonStyle.danger, custom_id="player_stop")
+    async def stop(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Para a música e limpa a fila."""
+        vc = interaction.guild.voice_client
+        if not vc:
+            await interaction.response.send_message("Não estou tocando nada.", ephemeral=True)
+            return
+
+        # Limpa a fila
+        if self.guild_id in bot.music_queue:
+            bot.music_queue[self.guild_id] = []
+        
+        # Reseta loops
+        if self.guild_id in bot.loop_control:
+            bot.loop_control[self.guild_id] = {'loop_track': False, 'loop_queue': False}
+
+        vc.stop()
+        await interaction.response.send_message("⏹️ Parado e fila limpa!", ephemeral=True)
+
+    @discord.ui.button(emoji="🔁", style=discord.ButtonStyle.success, label="Loop", custom_id="player_loop")
+    async def loop(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Alterna o modo de loop da música atual."""
+        if self.guild_id not in bot.loop_control:
+            bot.loop_control[self.guild_id] = {'loop_track': False, 'loop_queue': False}
+        
+        # Alterna loop da faixa
+        current = bot.loop_control[self.guild_id]['loop_track']
+        bot.loop_control[self.guild_id]['loop_track'] = not current
+        
+        state = "ativado" if not current else "desativado"
+        # Atualiza a cor do botão visualmente (feedback)
+        button.style = discord.ButtonStyle.primary if not current else discord.ButtonStyle.success
+        
+        await interaction.response.edit_message(view=self)
+        await interaction.followup.send(f"🔁 Loop da música {state}.", ephemeral=True)
+
+
 async def _play_next_track(guild: discord.Guild) -> None:
     """
-    Reproduz a próxima música da fila.
+    Reproduz a próxima música da fila e envia o player interativo.
     
     Args:
         guild (discord.Guild): O servidor
@@ -559,6 +633,24 @@ async def _play_next_track(guild: discord.Guild) -> None:
             asyncio.run_coroutine_threadsafe(_play_next_track(guild), bot.loop)
         
         voice_client.play(source, after=after_track)  # type: ignore[attr-defined]
+        
+        # --- ENVIA O PLAYER COM BOTÕES ---
+        try:
+            channel = bot.get_channel(track.channel_id)
+            if isinstance(channel, (discord.TextChannel, discord.Thread)):
+                embed = discord.Embed(
+                    title="🎵 Tocando Agora",
+                    description=f"**{track.title}**",
+                    color=discord.Color.green()
+                )
+                embed.add_field(name="Pedido por", value=track.requester, inline=True)
+                embed.set_thumbnail(url="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExbmZpbXJ6YnI1b3g4b3g4b3g4b3g4b3g4b3g4b3g4b3g4/S99mGj4FhZ9tq/giphy.gif") # Gif de musica opcional
+                
+                view = MusicPlayerView(guild.id)
+                await channel.send(embed=embed, view=view)
+        except Exception as e:
+            print(f"Erro ao enviar player UI: {e}")
+
         print(f"🎵 Tocando: {track.title} (requisitado por {track.requester})")
     except Exception as e:
         print(f"Erro ao reproduzir faixa: {e}")
@@ -661,7 +753,7 @@ async def musica(interaction: discord.Interaction, url: str):
             if not audio_url_e or "youtube.com/watch" in audio_url_e:
                 continue
             title_e = entry.get('title', 'Música')
-            mt = MusicTrack(audio_url_e, title_e, interaction.user.id, interaction.user.display_name)
+            mt = MusicTrack(audio_url_e, title_e, interaction.user.id, interaction.channel_id, interaction.user.display_name)
             bot.music_queue[interaction.guild.id].append(mt)
             added += 1
 
@@ -672,17 +764,9 @@ async def musica(interaction: discord.Interaction, url: str):
             return
 
         if isinstance(voice_client, discord.VoiceClient) and not voice_client.is_playing() and bot.music_queue[interaction.guild.id]:
-            next_track = bot.music_queue[interaction.guild.id].pop(0)
-            bot.current_track[interaction.guild.id] = next_track
-            source = discord.FFmpegPCMAudio(
-                next_track.url,
-                executable=str(FFMPEG_PATH),
-                before_options=FFMPEG_OPTIONS['before_options'],
-                options=FFMPEG_OPTIONS['options']
-            )
-            guild = interaction.guild
-            voice_client.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(_play_next_track(guild), bot.loop))
-
+            # Inicia o ciclo de reprodução (que vai enviar o UI)
+            await _play_next_track(interaction.guild)
+        
         await interaction.followup.send(f"📚 Playlist/mix adicionada à fila — {added} música(s) adicionadas.")
         return
 
@@ -709,7 +793,8 @@ async def musica(interaction: discord.Interaction, url: str):
         )
 
         # Cria a faixa de música
-        track = MusicTrack(audio_url, title, interaction.user.id, interaction.user.display_name)  # type: ignore[assignment]
+        # IMPORTANTE: Passamos o channel_id para saber onde enviar o player depois
+        track = MusicTrack(audio_url, title, interaction.user.id, interaction.channel_id, interaction.user.display_name)  # type: ignore[assignment]
         
         # Inicializa a fila para este servidor se não existir
         if interaction.guild.id not in bot.music_queue:
@@ -731,7 +816,17 @@ async def musica(interaction: discord.Interaction, url: str):
             
             print(f"DEBUG musica: about to play title={title} url_len={len(audio_url) if audio_url else 0} vc={voice_client} channel={getattr(voice_client.channel,'name',None)}")
             voice_client.play(source, after=after_track)
-            await interaction.followup.send(f"🎵 Tô tocando: **{title}** — aproveita aí")
+            
+            # --- ENVIA O PLAYER COM BOTÕES (Primeira música) ---
+            embed = discord.Embed(
+                title="🎵 Tocando Agora",
+                description=f"**{title}**",
+                color=discord.Color.green()
+            )
+            embed.add_field(name="Pedido por", value=interaction.user.display_name, inline=True)
+            view = MusicPlayerView(interaction.guild.id)
+            await interaction.followup.send(embed=embed, view=view)
+            
         else:
             # Se há música tocando, adiciona à fila
             bot.music_queue[interaction.guild.id].append(track)
@@ -855,7 +950,8 @@ async def timer(interaction: discord.Interaction, segundos: int, url: str):
 
         if isinstance(voice_client, discord.VoiceClient):
             # Armazena música atual para controle de permissões
-            bot.current_track[interaction.guild.id] = MusicTrack(audio_url, title, member.id, member.display_name)
+            # Channel ID é o canal da interação
+            bot.current_track[interaction.guild.id] = MusicTrack(audio_url, title, member.id, interaction.channel_id, member.display_name)
             voice_client.play(source)
             await safe_send(f"{member.mention} ⏱️ Timer acabou — tocando agora: **{title}**, aproveita aí!")
     except Exception as e:
