@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ bot_name }} Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #121212; color: #e0e0e0; }
+        .card { background-color: #1e1e1e; border: 1px solid #333; margin-bottom: 20px; }
+        .btn-control { width: 100%; margin-top: 5px; }
+        .status-badge { float: right; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark mb-4">
+        <div class="container">
+            <span class="navbar-brand mb-0 h1">🎛️ {{ bot_name }} Control</span>
+        </div>
+    </nav>
+
+    <div class="container" id="guilds-container">
+        <div class="text-center">
+            <div class="spinner-border text-light" role="status"></div>
+            <p>Carregando servidores...</p>
+        </div>
+    </div>
+
+    <script>
+        async function updateStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const guilds = await response.json();
+                const container = document.getElementById('guilds-container');
+                container.innerHTML = '';
+
+                if (guilds.length === 0) {
+                    container.innerHTML = '<div class="alert alert-info">O bot não está em nenhum servidor ou não carregou ainda.</div>';
+                    return;
+                }
+
+                guilds.forEach(guild => {
+                    const isPlaying = guild.is_playing;
+                    const trackName = guild.current_track ? guild.current_track.title : "Nada tocando";
+                    const requester = guild.current_track ? `Pedido por: ${guild.current_track.requester}` : "";
+                    
+                    const html = `
+                        <div class="card">
+                            <div class="card-header">
+                                <strong>${guild.name}</strong>
+                                <span class="badge bg-${isPlaying ? 'success' : 'secondary'} status-badge">
+                                    ${isPlaying ? 'Tocando' : 'Parado'}
+                                </span>
+                            </div>
+                            <div class="card-body">
+                                <h5 class="card-title">${trackName}</h5>
+                                <p class="card-text text-muted">${requester}</p>
+                                <p>Na fila: <strong>${guild.queue_count}</strong> músicas</p>
+                                
+                                <div class="row">
+                                    <div class="col">
+                                        <button onclick="control('${guild.id}', 'pause')" class="btn btn-primary btn-control">⏯️ Pause/Resume</button>
+                                    </div>
+                                    <div class="col">
+                                        <button onclick="control('${guild.id}', 'skip')" class="btn btn-secondary btn-control">⏭️ Pular</button>
+                                    </div>
+                                    <div class="col">
+                                        <button onclick="control('${guild.id}', 'stop')" class="btn btn-danger btn-control">⏹️ Parar</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    container.innerHTML += html;
+                });
+            } catch (error) {
+                console.error('Erro ao atualizar:', error);
+            }
+        }
+
+        async function control(guildId, action) {
+            await fetch(`/api/control/${action}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ guild_id: guildId })
+            });
+            updateStatus(); // Atualiza interface imediatamente
+        }
+
+        // Atualiza a cada 2 segundos
+        setInterval(updateStatus, 2000);
+        updateStatus();
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

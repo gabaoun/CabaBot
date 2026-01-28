@@ -27,6 +27,7 @@ from dotenv import load_dotenv, find_dotenv
 from pathlib import Path
 import json
 from typing import Dict, Any, List, Optional
+from dashboard.server import WebServer # Importa o servidor web
 
 # Carrega as variáveis de ambiente do arquivo .env
 # find_dotenv() procura automaticamente na árvore de diretórios
@@ -181,6 +182,11 @@ class CabaBot(discord.Client):
         """
         await self.tree.sync()
         print("✅ Comandos sincronizados com sucesso!")
+        
+        # Inicia o Dashboard Web
+        self.web_server = WebServer(self)
+        # Roda em background sem bloquear
+        self.loop.create_task(self.web_server.start())
 
     async def on_ready(self):
         """
