@@ -5,13 +5,10 @@
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Async](https://img.shields.io/badge/Async-await-brightgreen.svg)](https://docs.python.org/3/library/asyncio.html)
 
-> **👨‍💻 Desenvolvido por Gabriel Penha (Gabaoun)** - Especialista em sistemas distribuídos e APIs em tempo real
-
+> **👨‍💻 Desenvolvido por Gabriel Penha (Gabaoun)** -
+> 
 **CabaBot** é um bot de música enterprise-grade para Discord, demonstrando expertise em desenvolvimento assíncrono, processamento de áudio em tempo real e integração de múltiplas APIs. Projetado com arquitetura escalável e padrões de engenharia modernos.
 
-## 🏆 Por que este projeto impressiona recrutadores?
-
----
 
 ## 💼 Stack Tecnológico & Arquitetura
 
@@ -94,12 +91,6 @@ Se desejar testar o código diretamente:
     ```bash
     python CabaBot.py
     ```
-
-## 📬 Sobre o Desenvolvedor
-
-Olá! Sou um desenvolvedor apaixonado por backend e automação. Construí este bot para demonstrar minha capacidade de entregar software funcional, organizado e bem documentado.
-
-Estou em busca de oportunidades onde possa contribuir com meu código e continuar aprendendo. Se gostou da estrutura deste projeto, adoraria conversar!
 
 ---
 *Projeto para fins de estudo e portfólio.*
