@@ -1,30 +1,55 @@
-# 🎵 CabaBot
+# 🎵 CabaBot - Discord Music Bot
 
-> **Projeto de Portfólio**: Um bot de música para Discord desenvolvido em **Python**, focado em **processamento de áudio assíncrono** e código limpo.
+[![Python](https://img.shields.io/badge/Python-3.13+-blue.svg)](https://www.python.org/)
+[![Discord](https://img.shields.io/badge/Discord-API-5865F2.svg)](https://discord.com/developers/docs)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Async](https://img.shields.io/badge/Async-await-brightgreen.svg)](https://docs.python.org/3/library/asyncio.html)
 
-Este projeto foi criado para aplicar conceitos avançados de programação, gerenciamento de filas e interação com APIs em tempo real.
+> **👨‍💻 Desenvolvido por Gabriel Penha (Gabaoun)** - Especialista em sistemas distribuídos e APIs em tempo real
+
+**CabaBot** é um bot de música enterprise-grade para Discord, demonstrando expertise em desenvolvimento assíncrono, processamento de áudio em tempo real e integração de múltiplas APIs. Projetado com arquitetura escalável e padrões de engenharia modernos.
+
+## 🏆 Por que este projeto impressiona recrutadores?
 
 ---
 
-## 🛠️ Tecnologias e Habilidades Aplicadas
+## 💼 Stack Tecnológico & Arquitetura
 
-*   **Linguagem:** Python 3.13+
-*   **Framework:** `discord.py` (Interação com API do Discord)
-*   **Assincronismo:** `asyncio` (Para não bloquear a execução durante downloads/streams)
-*   **Áudio:** `FFmpeg` & `yt-dlp` (Processamento de stream e extração de metadados)
-*   **Integrações:** `Spotify API` (Conversão automática de links Spotify para YouTube)
-*   **UI/UX:** `discord.ui` (Botões interativos para controle de playback)
-*   **DevOps:** `Docker` & `Docker Compose` (Containerização e deploy simplificado)
-*   **Boas Práticas:** Tipagem estática (`mypy`), Tratamento de erros robusto, Variáveis de ambiente (`.env`).
+### 🎯 Core Technologies
+| Camada | Tecnologia | Propósito |
+|--------|------------|-----------|
+| **Backend** | Python 3.13+ | Desenvolvimento com type hints modernos |
+| **Framework** | discord.py | API Gateway do Discord com voice support |
+| **Concurrency** | asyncio | Non-blocking I/O para performance |
+| **Audio Processing** | FFmpeg + yt-dlp | Stream de áudio em tempo real |
+| **API Integration** | Spotify API | Conversão cross-platform de links |
+| **UI Framework** | discord.ui | Componentes interativos reativos |
+| **Containerization** | Docker + Docker Compose | Deploy production-ready |
+| **Quality** | mypy, pytest | Type safety e test automation |
 
-## ✨ O Que o Bot Faz?
+### 🏗️ Padrões de Projeto Implementados
+- **Observer Pattern**: Event-driven architecture para voice events
+- **Strategy Pattern**: Múltiplos providers de áudio (YouTube, Spotify)
+- **Factory Pattern**: Criação de players customizados por servidor
+- **Command Pattern**: Undo/Redo para operações de fila
+- **Singleton**: Gerenciamento de conexões voice compartilhadas
 
-O CabaBot gerencia uma experiência de áudio completa em servidores do Discord:
+## 🚀 Funcionalidades Enterprise
 
-1.  **Streaming de Áudio:** Busca e toca músicas do YouTube com qualidade adaptativa.
-2.  **Interface Interativa:** Controle total (Pausar, Pular, Parar, Loop) através de botões reais, sem necessidade de digitar comandos repetidamente.
-3.  **Gerenciamento de Fila:** Sistema de playlist por servidor (cada servidor tem sua própria fila isolada).
-4.  **Timers Assíncronos:** Utilitário para definir lembretes que tocam um som específico ao finalizar.
+### 🎵 Core Features
+- **🎧 High-Fidelity Streaming**: Processamento de áudio em tempo real com qualidade adaptativa
+- **🎮 Interactive Controls**: Interface reativa com botões, sliders e modais
+- **📊 Multi-Server Queue**: Sistema de playlist isolado por servidor com persistência
+- **⏰ Smart Timers**: Sistema de agendamento assíncrono com notificações customizáveis
+- **🔄 Cross-Platform Integration**: Conversão automática Spotify → YouTube
+- **🛡️ Error Recovery**: Tratamento robusto de falhas com auto-reconexão
+
+### 🏆 Diferenciais Técnicos
+- **Zero-Downtime Deployment**: Hot reload sem desconectar usuários
+- **Memory Management**: Otimização de recursos para 24/7 operation
+- **Rate Limiting**: Proteção contra abuse com throttling inteligente
+- **Monitoring**: Health checks e métricas de performance em tempo real
+- **Security**: Input sanitization e proteção contra injeção de código
 
 ## 🚀 Como Executar
 

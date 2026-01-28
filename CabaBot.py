@@ -35,14 +35,19 @@ load_dotenv(find_dotenv())
 
 # Define o caminho base do script e a localização do ffmpeg local
 SCRIPT_DIR = Path(__file__).parent
-LOCAL_FFMPEG = SCRIPT_DIR / "bin" / "ffmpeg" / "ffmpeg.exe"
+LOCAL_FFMPEG_WIN = SCRIPT_DIR / "bin" / "ffmpeg" / "ffmpeg.exe"
+LOCAL_FFMPEG_NIX = SCRIPT_DIR / "bin" / "ffmpeg" / "ffmpeg"
 
 # Lógica de seleção do FFmpeg:
-# 1. Tenta usar o executável local (Windows dev)
-# 2. Se não existir, assume que está no PATH do sistema (Linux/Docker)
-if LOCAL_FFMPEG.exists():
-    FFMPEG_PATH = str(LOCAL_FFMPEG)
-    print(f"✅ Usando FFmpeg local: {FFMPEG_PATH}")
+# 1. Tenta usar o executável local (Windows)
+# 2. Tenta usar o executável local (Linux/Mac)
+# 3. Se não existir, assume que está no PATH do sistema
+if LOCAL_FFMPEG_WIN.exists():
+    FFMPEG_PATH = str(LOCAL_FFMPEG_WIN)
+    print(f"✅ Usando FFmpeg local (Windows): {FFMPEG_PATH}")
+elif LOCAL_FFMPEG_NIX.exists():
+    FFMPEG_PATH = str(LOCAL_FFMPEG_NIX)
+    print(f"✅ Usando FFmpeg local (Linux/Mac): {FFMPEG_PATH}")
 else:
     FFMPEG_PATH = "ffmpeg"
     print("✅ Usando FFmpeg do sistema (PATH)")
@@ -106,7 +111,17 @@ def load_config() -> Dict[str, Any]:
 
 
 def save_config(cfg: Dict[str, Any]) -> None:
-    """Salva o dicionário de configuração no arquivo JSON."""
+    """Salva o dicionário de configuração no arquivo JSON (assíncrono em executor)."""
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.run_in_executor(None, lambda: _save_sync(cfg))
+        else:
+             _save_sync(cfg)
+    except RuntimeError:
+        _save_sync(cfg)
+
+def _save_sync(cfg: Dict[str, Any]):
     try:
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(cfg, f, indent=2, ensure_ascii=False)
@@ -189,6 +204,10 @@ class CabaBot(discord.Client):
         self.current_track = {}
         # Sessões de votação por guild
         self.vote_sessions = {}
+        # Armazena a última mensagem de "Tocando Agora" por guild para evitar spam
+        self.last_player_message = {}
+        # Histórico de músicas tocadas por guild: {'guild_id': [MusicTrack, ...]}
+        self.music_history = {}
 
     async def setup_hook(self):
         """
@@ -414,117 +433,7 @@ async def _get_or_connect_voice_client(
         return None
 
 
-async def _run_vote_for_action(
-    interaction: discord.Interaction,
-    guild: discord.Guild,
-    voice_channel: discord.VoiceChannel,
-    action_name: str,
-    timeout: int = 30,
-) -> bool:
-    """
-    Inicia uma votação pública no canal de texto da interação para aprovar
-    uma ação de controle de reprodução (pular/pausar/parar).
 
-    Retorna True se a votação atingir o limiar (>50% dos membros humanos
-    presentes no canal de voz) dentro do tempo limite, caso contrário False.
-    """
-    # Evita concorrência de votações por guild
-    if guild.id in bot.vote_sessions:
-        try:
-            await interaction.response.send_message(
-                "Já tem uma votação em andamento neste servidor, visse? Tenta de novo mais tarde.",
-                ephemeral=True,
-            )
-        except Exception:
-            pass
-        return False
-
-    # Conta apenas membros humanos no canal de voz
-    human_members = [m for m in voice_channel.members if not m.bot]
-    num_humans = len(human_members)
-    if num_humans == 0:
-        # Sem usuários humanos, nega por segurança
-        try:
-            await interaction.response.send_message("Não há participantes humanos no canal de voz.", ephemeral=True)
-        except Exception:
-            pass
-        return False
-
-    votes_needed = (num_humans // 2) + 1  # exige >50%
-
-    # Mensagem pública de votação
-    try:
-        if not isinstance(interaction.channel, (discord.TextChannel, discord.Thread)):
-            try:
-                await interaction.response.send_message("Não consegui iniciar a votação no canal.", ephemeral=True)
-            except Exception:
-                pass
-            return False
-        vote_msg = await interaction.channel.send(
-            f"🗳️ Votação para **{action_name}** iniciada por {interaction.user.mention}.\n"
-            f"Reaja com ✅ para concordar. São necessários **{votes_needed}** votos de **{num_humans}** participantes em {timeout}s."
-        )
-    except Exception:
-        try:
-            await interaction.response.send_message("Não consegui iniciar a votação no canal.", ephemeral=True)
-        except Exception:
-            pass
-        return False
-
-    # adiciona reação inicial para facilitar votação
-    try:
-        await vote_msg.add_reaction("✅")
-    except Exception:
-        pass
-
-    # registra sessão para evitar concorrência
-    bot.vote_sessions[guild.id] = {'message_id': vote_msg.id, 'required': votes_needed}
-
-    # aguarda o tempo definido e então conta votos válidos
-    await asyncio.sleep(timeout)
-
-    passed = False
-    votes = 0
-    try:
-        # procura reação ✅ na mensagem
-        reaction = None
-        for r in vote_msg.reactions:
-            if str(r.emoji) == '✅':
-                reaction = r
-                break
-
-        if reaction is not None:
-            users = []
-            async for u in reaction.users():
-                if u.bot:
-                    continue
-                # conta apenas se o usuário ainda estiver no canal de voz
-                if any(u.id == m.id for m in voice_channel.members):
-                    users.append(u)
-            votes = len({u.id for u in users})
-
-        if votes >= votes_needed:
-            passed = True
-    except Exception:
-        passed = False
-
-    # limpa sessão
-    try:
-        del bot.vote_sessions[guild.id]
-    except Exception:
-        pass
-
-    # informa resultado
-    try:
-        if isinstance(interaction.channel, (discord.TextChannel, discord.Thread)):
-            if passed:
-                await interaction.channel.send(f"✅ Votação aprovada: {votes}/{num_humans} votos.")
-            else:
-                await interaction.channel.send(f"❌ Votação rejeitada: {votes}/{num_humans} votos.")
-    except Exception:
-        pass
-
-    return passed
 
 
 class MusicTrack:
@@ -655,8 +564,20 @@ async def _play_next_track(guild: discord.Guild) -> None:
     if loop_track and guild.id in bot.current_track:
         track = bot.current_track[guild.id]
     else:
+        # Salva a música anterior no histórico antes de mudar
+        if guild.id in bot.current_track:
+            if guild.id not in bot.music_history:
+                bot.music_history[guild.id] = []
+            bot.music_history[guild.id].append(bot.current_track[guild.id])
+            # Limita histórico a 20 músicas para economizar memória
+            if len(bot.music_history[guild.id]) > 20:
+                bot.music_history[guild.id].pop(0)
+
         # Se não há fila ou está vazia, retorna
         if guild.id not in bot.music_queue or not bot.music_queue[guild.id]:
+            # Limpa track atual pois acabou a música
+            if guild.id in bot.current_track:
+                del bot.current_track[guild.id]
             return
         
         # Pega a próxima faixa
@@ -691,6 +612,14 @@ async def _play_next_track(guild: discord.Guild) -> None:
         try:
             channel = bot.get_channel(track.channel_id)
             if isinstance(channel, (discord.TextChannel, discord.Thread)):
+                # Tenta apagar a mensagem anterior se existir (Limpeza de chat)
+                last_msg = bot.last_player_message.get(guild.id)
+                if last_msg:
+                    try:
+                        await last_msg.delete()
+                    except Exception:
+                        pass # Mensagem pode ter sido deletada manualmente ou bot sem permissão
+                
                 embed = discord.Embed(
                     title="🎵 Tocando Agora",
                     description=f"**{track.title}**",
@@ -700,7 +629,8 @@ async def _play_next_track(guild: discord.Guild) -> None:
                 embed.set_thumbnail(url="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExbmZpbXJ6YnI1b3g4b3g4b3g4b3g4b3g4b3g4b3g4b3g4/S99mGj4FhZ9tq/giphy.gif") # Gif de musica opcional
                 
                 view = MusicPlayerView(guild.id)
-                await channel.send(embed=embed, view=view)
+                msg = await channel.send(embed=embed, view=view)
+                bot.last_player_message[guild.id] = msg
         except Exception as e:
             print(f"Erro ao enviar player UI: {e}")
 
@@ -709,7 +639,153 @@ async def _play_next_track(guild: discord.Guild) -> None:
         print(f"Erro ao reproduzir faixa: {e}")
 
 
+async def _play_previous_track(guild: discord.Guild) -> bool:
+    """
+    Tenta voltar para a música anterior.
+    Retorna True se sucesso, False se não houver histórico.
+    """
+    if guild.id not in bot.music_history or not bot.music_history[guild.id]:
+        return False
+
+    # Pega a última música do histórico
+    previous_track = bot.music_history[guild.id].pop()
+    
+    # Coloca ela no início da fila
+    if guild.id not in bot.music_queue:
+        bot.music_queue[guild.id] = []
+    bot.music_queue[guild.id].insert(0, previous_track)
+    
+    # Se tinha uma música tocando, ela vai pro histórico "naturalmente" pelo _play_next_track
+    # Mas queremos evitar que a música que estava tocando (que foi interrompida pra voltar)
+    # se duplique ou bagunce o fluxo. 
+    # O fluxo normal do .stop() chama _play_next_track -> salva current -> toca next (que é a previous).
+    # Isso faria a música interrompida ir pro histórico, o que é CORRETO (botão voltar = "essa não, volta a anterior").
+    
+    # Para a música atual para disparar o próximo
+    voice_client = guild.voice_client
+    if isinstance(voice_client, discord.VoiceClient):
+        voice_client.stop()
+        
+    return True
+
 bot = CabaBot()
+# Anexa funções auxiliares ao bot para acesso no dashboard
+bot.add_track_to_guild = add_track_to_guild # type: ignore
+bot.play_previous_track = _play_previous_track # type: ignore
+
+async def add_track_to_guild(guild: discord.Guild, query: str, requester_id: int, requester_name: str, channel_id: int) -> str:
+    """
+    Adiciona uma música à fila de um servidor (usado pelo Dashboard e Slash Commands).
+    Retorna uma mensagem de status.
+    """
+    # Lógica de Busca
+    url = query
+    allow_playlist = False
+    spotify_client_loc = spotify_client # Acessa variável global
+
+    # 1. Tratamento Spotify
+    if "open.spotify.com" in url:
+        if not spotify_client_loc:
+            return "⚠️ Suporte a Spotify não configurado."
+        
+        spotify_query = _get_spotify_track_info(url)
+        if spotify_query:
+            query = f'ytsearch:{spotify_query}'
+        else:
+            return "❌ Não consegui ler esse link do Spotify."
+
+    # 2. Tratamento YouTube
+    elif not url.startswith("http"):
+        query = 'ytsearch:' + url
+    elif "list=" in url or "playlist" in url:
+        allow_playlist = True
+
+    # Busca tracks
+    tracks = await fetch_tracks(query, allow_playlist=allow_playlist)
+    if not tracks:
+        return "❌ Não encontrei nada com esse nome."
+
+    voice_client = guild.voice_client
+    if not isinstance(voice_client, discord.VoiceClient):
+        return "❌ Bot não conectado a um canal de voz."
+
+    # Se for playlist
+    if len(tracks) > 1:
+        if guild.id not in bot.music_queue:
+            bot.music_queue[guild.id] = []
+        
+        for entry in tracks:
+            audio_url_e = _get_stream_url(entry)
+            if not audio_url_e or "youtube.com/watch" in audio_url_e:
+                continue
+            title_e = entry.get('title', 'Música')
+            mt = MusicTrack(audio_url_e, title_e, requester_id, channel_id, requester_name)
+            bot.music_queue[guild.id].append(mt)
+        
+        # Se não está tocando, inicia
+        if not voice_client.is_playing():
+            await _play_next_track(guild)
+            
+        return f"✅ Playlist com {len(tracks)} músicas adicionada."
+
+    # Faixa única
+    track_info = tracks[0]
+    audio_url = _get_stream_url(track_info)
+    title = track_info.get('title', 'Música')
+    
+    if not audio_url or "youtube.com/watch" in audio_url:
+        return "❌ Erro ao extrair áudio."
+
+    track = MusicTrack(audio_url, title, requester_id, channel_id, requester_name)
+    
+    if guild.id not in bot.music_queue:
+        bot.music_queue[guild.id] = []
+        
+    if not voice_client.is_playing():
+        bot.current_track[guild.id] = track
+        # Setup loop control se necessário
+        if guild.id not in bot.loop_control:
+            bot.loop_control[guild.id] = {'loop_track': False, 'loop_queue': False}
+            
+        # Toca
+        try:
+             # Cria a fonte de áudio através do FFmpeg
+            source = discord.FFmpegPCMAudio(
+                audio_url,
+                executable=str(FFMPEG_PATH),
+                before_options=FFMPEG_OPTIONS['before_options'],
+                options=FFMPEG_OPTIONS['options']
+            )
+            
+            def after_track(error):
+                if error: print(f"Erro: {error}")
+                asyncio.run_coroutine_threadsafe(_play_next_track(guild), bot.loop)
+                
+            voice_client.play(source, after=after_track)
+            
+            # Envia player (copiando lógica do play_next)
+            # Como é primeira musica, fazemos manualmente ou chamamos play_next?
+            # A lógica original do comando /musica fazia manualmente.
+            # Vamos simplificar: se play_next_track for robusto, poderiamos usar ele.
+            # Mas ele assume que tira da fila. Aqui já setamos current_track.
+            
+            # Envia UI
+            try:
+                channel = bot.get_channel(channel_id)
+                if isinstance(channel, (discord.TextChannel, discord.Thread)):
+                    embed = discord.Embed(title="🎵 Tocando Agora", description=f"**{title}**", color=discord.Color.green())
+                    embed.add_field(name="Pedido por", value=requester_name, inline=True)
+                    view = MusicPlayerView(guild.id)
+                    msg = await channel.send(embed=embed, view=view)
+                    bot.last_player_message[guild.id] = msg
+            except Exception: pass
+            
+            return f"▶️ Tocando agora: {title}"
+        except Exception as e:
+            return f"❌ Erro ao tocar: {e}"
+    else:
+        bot.music_queue[guild.id].append(track)
+        return f"✅ Adicionado à fila: {title}"
 
 # --- COMANDOS DE CONFIGURAÇÃO ---
 
@@ -1040,6 +1116,10 @@ async def timer(interaction: discord.Interaction, segundos: int, url: str):
         )
 
         if isinstance(voice_client, discord.VoiceClient):
+            # Se já estiver tocando algo, para a música para tocar o alarme
+            if voice_client.is_playing():
+                voice_client.stop()
+            
             # Armazena música atual para controle de permissões
             # Channel ID é o canal da interação, fallback 0
             cid = interaction.channel_id if interaction.channel_id else 0
