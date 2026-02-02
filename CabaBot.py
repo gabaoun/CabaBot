@@ -670,7 +670,7 @@ async def _play_previous_track(guild: discord.Guild) -> bool:
 
 bot = CabaBot()
 # Anexa funções auxiliares ao bot para acesso no dashboard
-bot.add_track_to_guild = add_track_to_guild # type: ignore
+#bot.add_track_to_guild = add_track_to_guild # type: ignore
 bot.play_previous_track = _play_previous_track # type: ignore
 
 async def add_track_to_guild(guild: discord.Guild, query: str, requester_id: int, requester_name: str, channel_id: int) -> str:
