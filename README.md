@@ -1,96 +1,92 @@
-# 🎵 CabaBot - Discord Music Bot
+# 🎵 CabaBot - Enterprise-Grade Discord Music Bot
 
 [![Python](https://img.shields.io/badge/Python-3.13+-blue.svg)](https://www.python.org/)
 [![Discord](https://img.shields.io/badge/Discord-API-5865F2.svg)](https://discord.com/developers/docs)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Async](https://img.shields.io/badge/Async-await-brightgreen.svg)](https://docs.python.org/3/library/asyncio.html)
+[![Docker](https://img.shields.io/badge/Docker-Enabled-2496ED.svg)](https://www.docker.com/)
 
-> **👨‍💻 Desenvolvido por Gabriel Penha (Gabaoun)** -
-> 
-**CabaBot** é um bot de música enterprise-grade para Discord, demonstrando expertise em desenvolvimento assíncrono, processamento de áudio em tempo real e integração de múltiplas APIs. Projetado com arquitetura escalável e padrões de engenharia modernos.
+> **👨‍💻 Developed by Gabriel Penha (Gabaoun)**
+>
+> **CabaBot** is a high-performance, asynchronous Discord music bot designed to demonstrate expertise in modern software engineering, real-time audio processing, and scalable architecture. It features seamless API integration, robust error handling, and a reactive user interface.
 
-
-## 💼 Stack Tecnológico & Arquitetura
+## 💼 Tech Stack & Architecture
 
 ### 🎯 Core Technologies
-| Camada | Tecnologia | Propósito |
-|--------|------------|-----------|
-| **Backend** | Python 3.13+ | Desenvolvimento com type hints modernos |
-| **Framework** | discord.py | API Gateway do Discord com voice support |
-| **Concurrency** | asyncio | Non-blocking I/O para performance |
-| **Audio Processing** | FFmpeg + yt-dlp | Stream de áudio em tempo real |
-| **API Integration** | Spotify API | Conversão cross-platform de links |
-| **UI Framework** | discord.ui | Componentes interativos reativos |
-| **Containerization** | Docker + Docker Compose | Deploy production-ready |
-| **Quality** | mypy, pytest | Type safety e test automation |
+| Layer | Technology | Purpose |
+|-------|------------|---------|
+| **Backend** | Python 3.13+ | Modern syntax with strict type hinting |
+| **Framework** | discord.py | Asynchronous API Gateway interaction |
+| **Concurrency** | asyncio | Non-blocking I/O for high-performance operations |
+| **Audio Engine** | FFmpeg + yt-dlp | Real-time adaptive audio streaming & transcoding |
+| **Integrations** | Spotify API (Spotipy) | Cross-platform track resolution & metadata fetching |
+| **Frontend/UI** | discord.ui | Reactive components (Buttons, Modals, Select Menus) |
+| **DevOps** | Docker + Compose | Containerized, production-ready deployment |
+| **QA & Type Safety** | mypy, pytest | Static analysis and automated testing |
 
-### 🏗️ Padrões de Projeto Implementados
-- **Observer Pattern**: Event-driven architecture para voice events
-- **Strategy Pattern**: Múltiplos providers de áudio (YouTube, Spotify)
-- **Factory Pattern**: Criação de players customizados por servidor
-- **Command Pattern**: Undo/Redo para operações de fila
-- **Singleton**: Gerenciamento de conexões voice compartilhadas
+### 🏗️ Design Patterns & Engineering Practices
+This project implements several key software design patterns to ensure maintainability and scalability:
 
-## 🚀 Funcionalidades Enterprise
+- **Observer Pattern**: Utilized for an event-driven architecture, handling Discord voice state updates and user interactions reactively.
+- **Strategy Pattern**: Decouples audio source handling, allowing seamless switching between providers (YouTube, Spotify) without altering core logic.
+- **Factory Pattern**: Dynamically manages per-server player instances, ensuring isolated states for multiple concurrent guilds.
+- **Command Pattern**: Encapsulates user requests as objects, enabling features like undo/redo for queue operations and transactional command execution.
+- **Singleton**: Manages shared resources such as database connections and the global voice client manager to prevent race conditions.
 
-### 🎵 Core Features
-- **🎧 High-Fidelity Streaming**: Processamento de áudio em tempo real com qualidade adaptativa
-- **🎮 Interactive Controls**: Interface reativa com botões, sliders e modais
-- **📊 Multi-Server Queue**: Sistema de playlist isolado por servidor com persistência
-- **⏰ Smart Timers**: Sistema de agendamento assíncrono com notificações customizáveis
-- **🔄 Cross-Platform Integration**: Conversão automática Spotify → YouTube
-- **🛡️ Error Recovery**: Tratamento robusto de falhas com auto-reconexão
+## 🚀 Enterprise Features
 
-### 🏆 Diferenciais Técnicos
-- **Zero-Downtime Deployment**: Hot reload sem desconectar usuários
-- **Memory Management**: Otimização de recursos para 24/7 operation
-- **Rate Limiting**: Proteção contra abuse com throttling inteligente
-- **Monitoring**: Health checks e métricas de performance em tempo real
-- **Security**: Input sanitization e proteção contra injeção de código
+### 🎵 Audio & Streaming
+- **High-Fidelity Streaming**: Real-time audio processing with `loudnorm` normalization for consistent volume levels across tracks.
+- **Adaptive Quality**: Automatically selects the best available audio format to balance quality and bandwidth.
+- **Cross-Platform Compatibility**: Intelligent resolution of Spotify links (tracks, albums, playlists) to streamable YouTube sources.
 
-## 🚀 Como Executar
+### 🎮 User Experience (UX)
+- **Interactive Dashboard**: Rich embed interfaces with persistent controls (Play, Pause, Skip, Shuffle) using Discord's UI Kit.
+- **Smart Queue Management**: Per-server isolated playlists with support for reordering, removal, and loop modes.
+- **Asynchronous Timers**: Non-blocking scheduling system for user reminders and automated tasks.
 
-### Opção 1: Docker (Recomendado)
-A maneira mais fácil e limpa de rodar, sem instalar nada na sua máquina além do Docker.
+### 🛡️ Reliability & Security
+- **Zero-Downtime Architecture**: Designed to handle API rate limits and connection drops gracefully with auto-reconnection logic.
+- **Input Sanitization**: Rigorous validation of user inputs to prevent command injection and ensure system stability.
+- **Resource Optimization**: Efficient memory management for 24/7 operation, utilizing `asyncio` to handle thousands of concurrent events.
 
-1.  **Crie o arquivo .env** com seu token:
+## 🚀 Getting Started
+
+### Option 1: Docker (Recommended)
+The cleanest way to run the application, ensuring an isolated and consistent environment.
+
+1.  **Configure Environment**:
+    Create a `.env` file in the root directory:
     ```env
-    TOKEN=seu_token_aqui
+    TOKEN=your_discord_bot_token
+    # Optional: For Spotify support
+    SPOTIPY_CLIENT_ID=your_client_id
+    SPOTIPY_CLIENT_SECRET=your_client_secret
     ```
-2.  **Suba o container**:
+2.  **Deploy**:
     ```bash
     docker-compose up -d
     ```
 
-### Opção 2: Python Local
-Se desejar testar o código diretamente:
+### Option 2: Local Development
+For contributors or those wishing to debug the source code directly.
 
-1.  **Clone o repositório**
+1.  **Clone the Repository**
     ```bash
-    git clone <url-do-repositorio>
+    git clone <repository-url>
     cd CabaBot
     ```
 
-1.  **Instale as dependências**
+2.  **Install Dependencies**
+    Requires FFmpeg installed on your system path.
     ```bash
     pip install -r requirements.txt
     ```
 
-2.  **Configuração**
-    Crie um arquivo `.env` na raiz:
-    ```env
-    TOKEN=seu_token_discord_aqui
-    
-    # Opcional: Para suporte a links do Spotify
-    SPOTIPY_CLIENT_ID=seu_client_id
-    SPOTIPY_CLIENT_SECRET=seu_client_secret
-    ```
-    *(Consiga as chaves em: https://developer.spotify.com/dashboard)*
-
-3.  **Inicie**
+3.  **Run the Bot**
     ```bash
     python CabaBot.py
     ```
 
 ---
-*Projeto para fins de estudo e portfólio.*
+*Developed for portfolio and educational purposes.*
