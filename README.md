@@ -85,7 +85,7 @@ Se desejar testar o código diretamente:
     SPOTIPY_CLIENT_ID=seu_client_id
     SPOTIPY_CLIENT_SECRET=seu_client_secret
     ```
-    *(Consiga as chaves em: developer.spotify.com/dashboard)*
+    *(Consiga as chaves em: https://developer.spotify.com/dashboard)*
 
 3.  **Inicie**
     ```bash
