@@ -12,20 +12,18 @@ Funcionalidades principais:
 - Comandos de utilidade (calculadora, perfil de usuário, teste de conexão)
 
 Author: CabaBot Team
-Version: 1.2.0
+Version: 1.2.1
 """
 
-import random
-import discord
+import discord  # type: ignore[import-untyped, import-not-found]
 import asyncio
 import os
-import yt_dlp  # type: ignore[import-untyped]
-import spotipy  # type: ignore[import-untyped]
-from spotipy.oauth2 import SpotifyClientCredentials  # type: ignore[import-untyped]
-from discord import app_commands
-from dotenv import load_dotenv, find_dotenv
+import yt_dlp  # type: ignore[import-untyped, import-not-found]
+import spotipy  # type: ignore[import-untyped, import-not-found]
+from spotipy.oauth2 import SpotifyClientCredentials  # type: ignore[import-untyped, import-not-found]
+from discord import app_commands  # type: ignore[import-untyped, import-not-found]
+from dotenv import load_dotenv, find_dotenv  # type: ignore[import-untyped, import-not-found]
 from pathlib import Path
-import json
 from typing import Dict, Any, List, Optional
 from dashboard.server import WebServer # Importa o servidor web
 
@@ -68,12 +66,6 @@ try:
 except Exception as e:
     print(f"⚠️ Erro ao configurar Spotify: {e}")
 
-# Áudio a ser reproduzido quando o bot ficar online (padrão: vídeo do YouTube)
-STARTUP_AUDIO_URL = random.choice(["https://www.youtube.com/watch?v=YeJj7v3f-vA", "https://www.youtube.com/watch?v=6xoJCJYLzZw", "https://www.youtube.com/watch?v=biZlbJAdyTE", "https://www.youtube.com/watch?v=sR9KWAIFSfc", "https://www.youtube.com/watch?v=xmf99leO-Z0", "https://www.youtube.com/watch?v=8zslY2eYJ9M"])
-
-# Path para configuração persistente por guild
-CONFIG_PATH = SCRIPT_DIR / "config.json"
-
 # Configurações reutilizáveis para yt-dlp (evita duplicação de código)
 # 'client': 'android' ajuda a evitar erros 403 Forbidden do YouTube
 YTDLP_OPTIONS = {
@@ -97,59 +89,6 @@ FFMPEG_OPTIONS = {
     # -loglevel error: Reduz o lixo no terminal
     'options': '-vn -loglevel error -af "loudnorm=I=-14:TP=-1.5:LRA=11"',
 }
-
-def load_config() -> Dict[str, Any]:
-    """Carrega o arquivo de configuração (JSON). Retorna dicionário vazio se não existir."""
-    try:
-        if CONFIG_PATH.exists():
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
-    except Exception:
-        # Se houver problema ao ler, retorna configuração vazia
-        pass
-    return {}
-
-
-def save_config(cfg: Dict[str, Any]) -> None:
-    """Salva o dicionário de configuração no arquivo JSON (assíncrono em executor)."""
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.run_in_executor(None, lambda: _save_sync(cfg))
-        else:
-             _save_sync(cfg)
-    except RuntimeError:
-        _save_sync(cfg)
-
-def _save_sync(cfg: Dict[str, Any]):
-    try:
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, indent=2, ensure_ascii=False)
-    except Exception as e:
-        print(f"Erro ao salvar config: {e}")
-
-
-# Carrega configuração inicial na memória
-_CONFIG = load_config()
-
-
-def guild_startup_enabled(guild_id: int) -> bool:
-    """Retorna True se o áudio de startup estiver habilitado para a guild.
-
-    Prioriza configuração por guild; se ausente, retorna True por padrão.
-    """
-    key = str(guild_id)
-    guilds = _CONFIG.get("guilds", {})
-    return bool(guilds.get(key, True))
-
-
-def set_guild_startup(guild_id: int, enabled: bool) -> None:
-    """Define e persiste a configuração de startup para uma guild."""
-    key = str(guild_id)
-    if "guilds" not in _CONFIG:
-        _CONFIG["guilds"] = {}
-    _CONFIG["guilds"][key] = bool(enabled)
-    save_config(_CONFIG)
 
 # Obtém o token do Discord das variáveis de ambiente
 # Aceita tanto TOKEN quanto DISCORD_TOKEN como nomes de variável
@@ -231,64 +170,6 @@ class CabaBot(discord.Client):
         Exibe informações de conexão e status do bot.
         """
         print(f'🤖 {self.user} tá on — pronto pra tocar umas arretadas!')
-
-        # Evita executar o startup mais de uma vez (on_ready pode disparar várias vezes)
-        if getattr(self, "_startup_done", False):
-            return
-        self._startup_done = True
-        # Tenta tocar o áudio de boas-vindas em guilds onde há membros em canais de voz
-        async def _play_startup_for_guild(guild: discord.Guild):
-            try:
-                # Escolhe o primeiro canal de voz que tenha membros não-bot
-                voice_channel = next(
-                    (ch for ch in guild.voice_channels if any(not m.bot for m in ch.members)),
-                    None
-                )
-                if voice_channel is None:
-                    return
-
-                voice_client = await _get_or_connect_voice_client(guild, voice_channel)
-                if voice_client is None:
-                    return
-
-                # Verifica se startup está habilitado para esta guild e globalmente
-                global_enabled = os.getenv("STARTUP_AUDIO_ENABLED", "true").lower() in ("1", "true", "yes", "on")
-                if not global_enabled or not guild_startup_enabled(guild.id):
-                    return
-
-                # Busca a URL de áudio via yt-dlp
-                query = STARTUP_AUDIO_URL if STARTUP_AUDIO_URL.startswith("http") else f'ytsearch:{STARTUP_AUDIO_URL}'
-                results = await search_ytdlp_async(query, YTDLP_OPTIONS)
-                if not results:
-                    return
-                track = results['entries'][0] if 'entries' in results else results
-                # Debug: inspeciona chave/estrutura retornada pelo yt-dlp
-                try:
-                    print(f"DEBUG startup track keys: {list(track.keys())}")
-                except Exception:
-                    print("DEBUG startup: track is not a mapping")
-                audio_url = _get_stream_url(track)
-                title = track.get('title', 'Música de boas-vindas')
-                if not audio_url or "youtube.com/watch" in audio_url:
-                    return
-
-                source = discord.FFmpegPCMAudio(
-                    audio_url,
-                    executable=str(FFMPEG_PATH),
-                    before_options=FFMPEG_OPTIONS['before_options'],
-                    options=FFMPEG_OPTIONS['options']
-                )
-
-
-                if isinstance(voice_client, discord.VoiceClient):
-                    voice_client.play(source)
-                    print(f"Tocando áudio de startup em {guild.name}: {title}")
-            except Exception as exc:
-                print(f"Erro ao tocar áudio de startup em {guild.name}: {exc}")
-
-        # Dispara tarefas para cada guild
-        for g in list(self.guilds):
-            asyncio.create_task(_play_startup_for_guild(g))
 
 
 async def search_ytdlp_async(query: str, ydl_opts: dict) -> dict:
@@ -758,7 +639,8 @@ async def add_track_to_guild(guild: discord.Guild, query: str, requester_id: int
             )
             
             def after_track(error):
-                if error: print(f"Erro: {error}")
+                if error:
+                    print(f"Erro: {error}")
                 asyncio.run_coroutine_threadsafe(_play_next_track(guild), bot.loop)
                 
             voice_client.play(source, after=after_track)
@@ -778,7 +660,8 @@ async def add_track_to_guild(guild: discord.Guild, query: str, requester_id: int
                     view = MusicPlayerView(guild.id)
                     msg = await channel.send(embed=embed, view=view)
                     bot.last_player_message[guild.id] = msg
-            except Exception: pass
+            except Exception:
+                pass
             
             return f"▶️ Tocando agora: {title}"
         except Exception as e:
@@ -787,32 +670,7 @@ async def add_track_to_guild(guild: discord.Guild, query: str, requester_id: int
         bot.music_queue[guild.id].append(track)
         return f"✅ Adicionado à fila: {title}"
 
-# --- COMANDOS DE CONFIGURAÇÃO ---
-
-@bot.tree.command(name="startup_audio", description="Ativa/desativa áudio de boas-vindas neste servidor")
-@app_commands.describe(enabled="true para ativar, false para desativar")
-async def startup_audio(interaction: discord.Interaction, enabled: bool):
-    """
-    Comando para habilitar ou desabilitar o áudio de startup neste servidor.
-
-    Exige permissão `Manage Guild` para alterar a configuração.
-    """
-    # Só funciona em servidores
-    if interaction.guild is None:
-        await interaction.response.send_message("Oxente — esse comando só funciona dentro de um servidor, visse?", ephemeral=True)
-        return
-
-    # Verifica permissão do usuário
-    if not isinstance(interaction.user, discord.Member) or not interaction.user.guild_permissions.manage_guild:
-        await interaction.response.send_message("Você precisa da permissão 'Gerenciar Servidor' pra isso.", ephemeral=True)
-        return
-
-    # Salva a configuração e responde
-    set_guild_startup(interaction.guild.id, enabled)
-    state = "ativado" if enabled else "desativado"
-    await interaction.response.send_message(f"Áudio de startup {state} neste servidor.", ephemeral=True)
-
-
+# --- COMANDOS - CONTROLES DE REPRODUÇÃO ---
 
 def _get_spotify_track_info(url: str) -> Optional[str]:
     """
@@ -1421,10 +1279,9 @@ async def comandos(interaction: discord.Interaction):
     )
 
     embed.add_field(
-        name="⏱️ Timers / Startup",
+        name="⏱️ Timers",
         value=(
-            "`/timer <segundos> <url|nome>` — Define um timer que toca uma música.\n"
-            "`/startup_audio <true|false>` — Ativa/Desativa áudio de boas-vindas."
+            "`/timer <segundos> <url|nome>` — Define um timer que toca uma música."
         ),
         inline=False,
     )

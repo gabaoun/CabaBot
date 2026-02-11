@@ -1,9 +1,9 @@
-from aiohttp import web
-import aiohttp_jinja2
-import jinja2
+from aiohttp import web  # type: ignore[import-untyped, import-not-found]
+import aiohttp_jinja2  # type: ignore[import-untyped, import-not-found]
+import jinja2  # type: ignore[import-untyped, import-not-found]
 import os
 import asyncio
-import discord
+import discord  # type: ignore[import-untyped, import-not-found]
 
 class WebServer:
     def __init__(self, bot):
@@ -64,14 +64,16 @@ class WebServer:
             return web.Response(status=400, text="Invalid Data")
 
         guild = self.bot.get_guild(guild_id)
-        if not guild: return web.Response(status=404, text="Guild not found")
+        if not guild:
+            return web.Response(status=404, text="Guild not found")
 
         # Usa channel_id 0 ou tenta pegar o último usado
         channel_id = 0
         if guild.id in self.bot.last_player_message:
             try:
                 channel_id = self.bot.last_player_message[guild.id].channel.id
-            except: pass
+            except Exception:
+                pass
 
         res = await self.bot.add_track_to_guild(guild, query, 0, "Dashboard User", channel_id)
         return web.json_response({'message': res})
@@ -109,8 +111,10 @@ class WebServer:
              return web.Response(status=400, text="Not connected to voice")
 
         if action == 'pause':
-            if vc.is_playing(): vc.pause()
-            elif vc.is_paused(): vc.resume()
+            if vc.is_playing():
+                vc.pause()
+            elif vc.is_paused():
+                vc.resume()
         elif action == 'skip':
             vc.stop()
         elif action == 'previous':
