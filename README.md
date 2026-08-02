@@ -1,4 +1,4 @@
-# 🎵 CabaBot - Enterprise-Grade Discord Music Bot
+# 🎵 CabaBot - Async Discord Music Bot
 
 [![Python](https://img.shields.io/badge/Python-3.13+-blue.svg)](https://www.python.org/)
 [![Discord](https://img.shields.io/badge/Discord-API-5865F2.svg)](https://discord.com/developers/docs)
@@ -21,7 +21,7 @@
 | **Audio Engine** | FFmpeg + yt-dlp | Real-time adaptive audio streaming & transcoding |
 | **Integrations** | Spotify API (Spotipy) | Cross-platform track resolution & metadata fetching |
 | **Frontend/UI** | discord.ui | Reactive components (Buttons, Modals, Select Menus) |
-| **DevOps** | Docker + Compose | Containerized, production-ready deployment |
+| **DevOps** | Docker + Compose | Containerized deployment |
 | **QA & Type Safety** | mypy, pytest | Static analysis and automated testing |
 
 ### 🏗️ Design Patterns & Engineering Practices
@@ -33,7 +33,7 @@ This project implements several key software design patterns to ensure maintaina
 - **Command Pattern**: Encapsulates user requests as objects, enabling features like undo/redo for queue operations and transactional command execution.
 - **Singleton**: Manages shared resources such as database connections and the global voice client manager to prevent race conditions.
 
-## 🚀 Enterprise Features
+## 🚀 Features
 
 ### 🎵 Audio & Streaming
 - **High-Fidelity Streaming**: Real-time audio processing with `loudnorm` normalization for consistent volume levels across tracks.
@@ -46,9 +46,9 @@ This project implements several key software design patterns to ensure maintaina
 - **Asynchronous Timers**: Non-blocking scheduling system for user reminders and automated tasks.
 
 ### 🛡️ Reliability & Security
-- **Zero-Downtime Architecture**: Designed to handle API rate limits and connection drops gracefully with auto-reconnection logic.
+- **Resilient Connections**: Handles API rate limits and connection drops gracefully with auto-reconnection logic.
 - **Input Sanitization**: Rigorous validation of user inputs to prevent command injection and ensure system stability.
-- **Resource Optimization**: Efficient memory management for 24/7 operation, utilizing `asyncio` to handle thousands of concurrent events.
+- **Async I/O**: Non-blocking `asyncio` event loop instead of per-user threads or polling.
 
 ## 🚀 Getting Started
 
