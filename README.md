@@ -22,7 +22,7 @@
 | **Integrations** | Spotify API (Spotipy) | Cross-platform track resolution & metadata fetching |
 | **Frontend/UI** | discord.ui | Reactive components (Buttons, Modals, Select Menus) |
 | **DevOps** | Docker + Compose | Containerized deployment |
-| **QA & Type Safety** | mypy, pytest | Static analysis and automated testing |
+| **Type Safety** | mypy | Static type analysis |
 
 ### 🏗️ Design Patterns & Engineering Practices
 This project implements several key software design patterns to ensure maintainability and scalability:
